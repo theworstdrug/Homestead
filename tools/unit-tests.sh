@@ -11,6 +11,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PURE=(
+  BannerColor.java
+  Motion.java
+  Palette.java
   SettingsTransfer.java
 )
 

@@ -23,6 +23,9 @@ public final class UnitTests {
         try {
             T.eq(2, 1 + 1, "runner");
             SettingsTransferTest.run();
+            PaletteTest.run();
+            BannerColorTest.run();
+            MotionTest.run();
         } catch (Throwable t) {
             System.out.println("FAIL " + t.getMessage());
             t.printStackTrace(System.out);
