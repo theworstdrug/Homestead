@@ -73,6 +73,9 @@ public final class Prefs {
 
     private Prefs() { }
 
+    /** The settings file itself, for MigrateProvider's import and export. */
+    static SharedPreferences store(Context c) { return sp(c); }
+
     private static SharedPreferences sp(Context c) {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }

@@ -100,6 +100,13 @@
               android:authorities="com.homestead.launcher.background"
               android:exported="true"/>
 
+    <!-- Imports and exports the settings from "adb shell content read/write", so they can
+         move to an install signed with another key. Same guard as the photo provider: the
+         shell user and root only. -->
+    <provider android:name=".MigrateProvider"
+              android:authorities="com.homestead.launcher.migrate"
+              android:exported="true"/>
+
     <!-- Open our launcher at boot instead of Amazon's -->
     <receiver android:name=".BootReceiver" android:exported="true">
       <intent-filter android:priority="999">

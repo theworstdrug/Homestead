@@ -212,6 +212,22 @@ Things to know before you leave the TV:
   off again, the TV's key prompt could appear on screen. This has not been seen on the test
   TV (Fire OS 7) and has not been tested on Fire OS 8.
 
+## Keeping your settings
+
+Homestead's settings can be saved to a computer and put back later, for example before
+reinstalling a build signed with a different key, which Android only allows after an
+uninstall:
+
+```sh
+adb shell content read --uri content://com.homestead.launcher.migrate/prefs > homestead.prefs
+# ...uninstall, install the other build, then:
+adb push homestead.prefs /data/local/tmp/
+adb shell "content write --uri content://com.homestead.launcher.migrate/prefs < /data/local/tmp/homestead.prefs"
+```
+
+The file is plain text, one setting per line. Putting it back replaces only the settings it
+names. Only a computer connected over ADB can read or write it; other apps on the TV cannot.
+
 ## Removing Homestead
 
 1. Open **Debloat** and select **Undo everything this app switched off**. This switches

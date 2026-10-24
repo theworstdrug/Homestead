@@ -22,6 +22,7 @@ public final class UnitTests {
     public static void main(String[] args) {
         try {
             T.eq(2, 1 + 1, "runner");
+            SettingsTransferTest.run();
         } catch (Throwable t) {
             System.out.println("FAIL " + t.getMessage());
             t.printStackTrace(System.out);

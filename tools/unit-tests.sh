@@ -11,6 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PURE=(
+  SettingsTransfer.java
 )
 
 rm -rf build-tests
