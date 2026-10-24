@@ -57,6 +57,11 @@ public final class Prefs {
     private static final String K_DATE = "date_format";
     private static final String K_NONTV_WIDE = "nontv_wide";
     private static final String K_FIRE_ICONS = "fire_os_icons";
+    private static final String K_PROFILES = "profiles";
+    private static final String K_PROFILE_CURRENT = "profile_current";
+    private static final String K_PROFILES_MIGRATED = "profiles_migrated";
+    /** The owner profile's name on an install that predates profiles. */
+    static final String LEGACY_OWNER = "Sinclair";
 
     public static final int SORT_LAST_USED = 0;
     public static final int SORT_ALPHA = 1;
@@ -80,7 +85,47 @@ public final class Prefs {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
+    // ---------------------------------------------------------------- profiles
+
+    /**
+     * The profiles. The first call on an install that predates them makes the owner
+     * profile from the old look settings; the old hidden set stays where it is and now
+     * means "hidden for everyone".
+     */
+    static synchronized Profiles profiles(Context c) {
+        SharedPreferences sp = sp(c);
+        Profiles ps = Profiles.decode(sp.getString(K_PROFILES, null));
+        if (ps.size() == 0 || ps.owner() == null) {
+            ps = Profiles.fromLegacy(LEGACY_OWNER, sp.getString(K_BACKGROUND_ID, null),
+                    sp.getBoolean(K_GREETING, false));
+            sp.edit().putString(K_PROFILES, ps.encode()).putBoolean(K_PROFILES_MIGRATED, true)
+                    .putString(K_PROFILE_CURRENT, ps.owner().id).apply();
+        }
+        return ps;
+    }
+
+    static synchronized void setProfiles(Context c, Profiles ps) {
+        sp(c).edit().putString(K_PROFILES, ps.encode()).apply();
+    }
+
+    /** The profile in use; the owner if the remembered one has gone. */
+    static Profiles.Profile current(Context c) {
+        Profiles ps = profiles(c);
+        Profiles.Profile p = ps.byId(sp(c).getString(K_PROFILE_CURRENT, ""));
+        return p != null ? p : ps.owner();
+    }
+
+    static void setCurrent(Context c, String id) {
+        sp(c).edit().putString(K_PROFILE_CURRENT, id).apply();
+    }
+
+    /** Replace the current profile's settings (look, its hidden tiles). */
+    static void updateCurrent(Context c, Profiles.Profile p) {
+        setProfiles(c, profiles(c).replace(p));
+    }
+
     // ---------------------------------------------------------------- hidden tiles
+    // K_HIDDEN is the set hidden for everyone; each profile adds its own on top.
 
     /** Returns a copy: a Set from SharedPreferences must not be mutated. */
     public static Set<String> hidden(Context c) {

@@ -26,6 +26,7 @@ public final class UnitTests {
             PaletteTest.run();
             BannerColorTest.run();
             MotionTest.run();
+            ProfilesTest.run();
         } catch (Throwable t) {
             System.out.println("FAIL " + t.getMessage());
             t.printStackTrace(System.out);

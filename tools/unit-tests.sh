@@ -14,6 +14,7 @@ PURE=(
   BannerColor.java
   Motion.java
   Palette.java
+  Profiles.java
   SettingsTransfer.java
 )
 

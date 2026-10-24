@@ -124,9 +124,10 @@ public final class AppModel {
         return false;
     }
 
-    /** What the grid should draw: everything except tiles the user hid. */
+    /** What the grid should draw: everything except tiles hidden for everyone or for this profile. */
     public static List<Item> visibleItems(Context c) {
         java.util.Set<String> hidden = Prefs.hidden(c);
+        hidden.addAll(Prefs.current(c).hidden);
         List<Item> out = new ArrayList<Item>(ITEMS.size());
         for (int i = 0; i < ITEMS.size(); i++) {
             Item it = ITEMS.get(i);

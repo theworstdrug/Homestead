@@ -1,0 +1,108 @@
+/*
+ * Homestead - a replacement home screen for Fire TV.
+ * Copyright (C) 2026 Homestead contributors
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms
+ * of the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version. It is distributed in
+ * the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ * Public License for more details. You should have received a copy of the GNU General
+ * Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+package com.homestead.launcher;
+
+import java.util.Arrays;
+import java.util.HashSet;
+
+final class ProfilesTest {
+    private ProfilesTest() { }
+
+    static void run() {
+        encodeDecodeRoundTrip();
+        ownerCannotBeDeleted();
+        maxSix();
+        nonOwnerCannotSeeEveryone();
+        legacyBecomesOwnerSinclair();
+        legacyPhoto();
+        decodeGarbageGivesNothing();
+    }
+
+    private static Profiles.Profile kid() {
+        Profiles.Profile p = new Profiles.Profile();
+        p.id = "p2";
+        p.name = "Test";
+        p.color = 5;
+        p.theme = "frost";
+        p.accent = "green";
+        p.hidden = new HashSet<String>(Arrays.asList("app:com.hulu.plus", "in:hdmi1"));
+        return p;
+    }
+
+    static void encodeDecodeRoundTrip() {
+        Profiles ps = Profiles.fromLegacy("Sinclair", "deepsea", false).add(kid());
+        Profiles back = Profiles.decode(ps.encode());
+        T.eq(2, back.size(), "two profiles");
+        T.eq("Sinclair", back.owner().name, "owner name");
+        Profiles.Profile k = back.byId("p2");
+        T.eq("Test", k.name, "name");
+        T.eq(5, k.color, "colour");
+        T.eq("frost", k.theme, "theme");
+        T.eq("green", k.accent, "accent");
+        T.eq(kid().hidden, k.hidden, "hidden");
+        T.yes(!k.owner, "not owner");
+    }
+
+    static void ownerCannotBeDeleted() {
+        final Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false).add(kid());
+        T.fails(IllegalStateException.class, new Runnable() {
+            public void run() { ps.remove(ps.owner().id); }
+        }, "remove owner");
+        T.eq(1, ps.remove("p2").size(), "others can go");
+    }
+
+    static void maxSix() {
+        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false);
+        for (int i = 0; i < 5; i++) {
+            Profiles.Profile p = kid();
+            p.id = "k" + i;
+            ps = ps.add(p);
+        }
+        T.eq(6, ps.size(), "six");
+        final Profiles full = ps;
+        T.fails(IllegalStateException.class, new Runnable() {
+            public void run() { full.add(kid()); }
+        }, "seventh");
+    }
+
+    static void nonOwnerCannotSeeEveryone() {
+        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false).add(kid());
+        T.yes(Profiles.canSeeEveryone(ps.owner()), "owner sees everyone settings");
+        T.yes(!Profiles.canSeeEveryone(ps.byId("p2")), "others do not");
+        T.yes(!Profiles.canSeeEveryone(null), "nobody does not");
+    }
+
+    static void legacyBecomesOwnerSinclair() {
+        Profiles ps = Profiles.fromLegacy("Sinclair", "black", true);
+        T.eq(1, ps.size(), "one profile");
+        Profiles.Profile o = ps.owner();
+        T.eq("Sinclair", o.name, "name");
+        T.eq("oled", o.theme, "black becomes OLED");
+        T.yes(o.greeting, "greeting carried");
+        T.yes(o.glow && o.ranks, "glow and ranks on");
+        T.eq("ember", Profiles.fromLegacy("S", "ember", false).owner().theme, "ember stays ember");
+        T.eq("frost", Profiles.fromLegacy("S", "sky", false).owner().theme, "sky becomes frost");
+        T.eq("midnight", Profiles.fromLegacy("S", "deepsea", false).owner().theme, "others become midnight");
+    }
+
+    static void legacyPhoto() {
+        T.yes(Profiles.fromLegacy("S", "photo", false).owner().usePhoto, "photo carried");
+        T.yes(!Profiles.fromLegacy("S", "black", false).owner().usePhoto, "no photo");
+    }
+
+    static void decodeGarbageGivesNothing() {
+        T.eq(0, Profiles.decode("").size(), "empty");
+        T.eq(0, Profiles.decode(null).size(), "null");
+        T.eq(0, Profiles.decode("not|a|profile").size(), "short line skipped");
+    }
+}
