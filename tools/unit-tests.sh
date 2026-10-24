@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 PURE=(
   BannerColor.java
+  Flavor.java
   Motion.java
   Palette.java
   Profiles.java

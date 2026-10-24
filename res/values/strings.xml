@@ -13,4 +13,13 @@
   <string name="home_greet_morning">Good morning</string>
   <string name="home_greet_afternoon">Good afternoon</string>
   <string name="home_greet_evening">Good evening</string>
+  <string name="home_greet_morning_name">Good morning, %1$s</string>
+  <string name="home_greet_afternoon_name">Good afternoon, %1$s</string>
+  <string name="home_greet_evening_name">Good evening, %1$s</string>
+  <string name="home_sec_apps">Your apps</string>
+  <string name="home_sec_inputs_short">Inputs</string>
+  <string name="home_sec_more">More</string>
+  <string name="home_hold_hint">Hold Select for options</string>
+  <string name="home_rank_first">Your most-used app</string>
+  <string name="home_rank_n">#%1$d in your apps</string>
 </resources>

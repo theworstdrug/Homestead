@@ -150,12 +150,10 @@ public final class AppModel {
 
     private static void metrics(Context c) {
         if (cellW > 0) return;
-        DisplayMetrics dm = c.getResources().getDisplayMetrics();
-        int margin = dp(c, MARGIN_DP);
-        int gap = dp(c, GAP_DP);
-        int cols = Prefs.columns(c);
-        cellW = (dm.widthPixels - 2 * margin - (cols - 1) * gap) / cols;
-        if (cellW <= 0) cellW = dp(c, 136);
+        // Banners are decoded at the size of the focused (large) tile in the apps row, so
+        // they stay sharp when a tile grows; unfocused tiles draw them scaled down.
+        cellW = Px.of(c, AppRow.FOCUS_W);
+        if (cellW <= 0) cellW = dp(c, 200);
         cellH = cellW * 9 / 16;
     }
 
@@ -232,7 +230,7 @@ public final class AppModel {
 
                 Drawable raw = null;
                 try { raw = ai.loadBanner(pm); } catch (Throwable t) { raw = null; }
-                a.banner = toBitmap(c, raw, cellW, cellH, true);
+                a.banner = toBitmap(c, raw, cellW, cellH, false);
                 raw = null;
                 a.tvApp = (ci == 0) || a.banner != null;
                 // Icons are only shown when there is no banner, so only decode them then.

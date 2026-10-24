@@ -60,6 +60,7 @@ public final class Prefs {
     private static final String K_PROFILES = "profiles";
     private static final String K_PROFILE_CURRENT = "profile_current";
     private static final String K_PROFILES_MIGRATED = "profiles_migrated";
+    private static final String K_LAST_GLOW = "last_glow";
     /** The owner profile's name on an install that predates profiles. */
     static final String LEGACY_OWNER = "Sinclair";
 
@@ -96,8 +97,7 @@ public final class Prefs {
         SharedPreferences sp = sp(c);
         Profiles ps = Profiles.decode(sp.getString(K_PROFILES, null));
         if (ps.size() == 0 || ps.owner() == null) {
-            ps = Profiles.fromLegacy(LEGACY_OWNER, sp.getString(K_BACKGROUND_ID, null),
-                    sp.getBoolean(K_GREETING, false));
+            ps = Profiles.fromLegacy(LEGACY_OWNER, sp.getString(K_BACKGROUND_ID, null));
             sp.edit().putString(K_PROFILES, ps.encode()).putBoolean(K_PROFILES_MIGRATED, true)
                     .putString(K_PROFILE_CURRENT, ps.owner().id).apply();
         }
@@ -122,6 +122,13 @@ public final class Prefs {
     /** Replace the current profile's settings (look, its hidden tiles). */
     static void updateCurrent(Context c, Profiles.Profile p) {
         setProfiles(c, profiles(c).replace(p));
+    }
+
+    /** The last app colour the home screen glowed with, for the idle screen. */
+    static int lastGlow(Context c) { return sp(c).getInt(K_LAST_GLOW, 0); }
+
+    static void setLastGlow(Context c, int color) {
+        if (lastGlow(c) != color) sp(c).edit().putInt(K_LAST_GLOW, color).apply();
     }
 
     // ---------------------------------------------------------------- hidden tiles

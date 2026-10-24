@@ -40,7 +40,7 @@ final class ProfilesTest {
     }
 
     static void encodeDecodeRoundTrip() {
-        Profiles ps = Profiles.fromLegacy("Sinclair", "deepsea", false).add(kid());
+        Profiles ps = Profiles.fromLegacy("Sinclair", "deepsea").add(kid());
         Profiles back = Profiles.decode(ps.encode());
         T.eq(2, back.size(), "two profiles");
         T.eq("Sinclair", back.owner().name, "owner name");
@@ -54,7 +54,7 @@ final class ProfilesTest {
     }
 
     static void ownerCannotBeDeleted() {
-        final Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false).add(kid());
+        final Profiles ps = Profiles.fromLegacy("Sinclair", "midnight").add(kid());
         T.fails(IllegalStateException.class, new Runnable() {
             public void run() { ps.remove(ps.owner().id); }
         }, "remove owner");
@@ -62,7 +62,7 @@ final class ProfilesTest {
     }
 
     static void maxSix() {
-        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false);
+        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight");
         for (int i = 0; i < 5; i++) {
             Profiles.Profile p = kid();
             p.id = "k" + i;
@@ -76,28 +76,28 @@ final class ProfilesTest {
     }
 
     static void nonOwnerCannotSeeEveryone() {
-        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight", false).add(kid());
+        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight").add(kid());
         T.yes(Profiles.canSeeEveryone(ps.owner()), "owner sees everyone settings");
         T.yes(!Profiles.canSeeEveryone(ps.byId("p2")), "others do not");
         T.yes(!Profiles.canSeeEveryone(null), "nobody does not");
     }
 
     static void legacyBecomesOwnerSinclair() {
-        Profiles ps = Profiles.fromLegacy("Sinclair", "black", true);
+        Profiles ps = Profiles.fromLegacy("Sinclair", "black");
         T.eq(1, ps.size(), "one profile");
         Profiles.Profile o = ps.owner();
         T.eq("Sinclair", o.name, "name");
         T.eq("oled", o.theme, "black becomes OLED");
-        T.yes(o.greeting, "greeting carried");
+        T.yes(o.greeting, "the new greeting starts on, whatever the old one was");
         T.yes(o.glow && o.ranks, "glow and ranks on");
-        T.eq("ember", Profiles.fromLegacy("S", "ember", false).owner().theme, "ember stays ember");
-        T.eq("frost", Profiles.fromLegacy("S", "sky", false).owner().theme, "sky becomes frost");
-        T.eq("midnight", Profiles.fromLegacy("S", "deepsea", false).owner().theme, "others become midnight");
+        T.eq("ember", Profiles.fromLegacy("S", "ember").owner().theme, "ember stays ember");
+        T.eq("frost", Profiles.fromLegacy("S", "sky").owner().theme, "sky becomes frost");
+        T.eq("midnight", Profiles.fromLegacy("S", "deepsea").owner().theme, "others become midnight");
     }
 
     static void legacyPhoto() {
-        T.yes(Profiles.fromLegacy("S", "photo", false).owner().usePhoto, "photo carried");
-        T.yes(!Profiles.fromLegacy("S", "black", false).owner().usePhoto, "no photo");
+        T.yes(Profiles.fromLegacy("S", "photo").owner().usePhoto, "photo carried");
+        T.yes(!Profiles.fromLegacy("S", "black").owner().usePhoto, "no photo");
     }
 
     static void decodeGarbageGivesNothing() {

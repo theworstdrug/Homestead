@@ -121,14 +121,17 @@ final class Profiles {
 
     static boolean canSeeEveryone(Profile p) { return p != null && p.owner; }
 
-    /** The first profile on an install that predates profiles, made from its old settings. */
-    static Profiles fromLegacy(String ownerName, String backgroundId, boolean greeting) {
+    /**
+     * The first profile on an install that predates profiles, made from its old settings.
+     * The greeting starts on: the new one (name and flavour line) replaces the old option.
+     */
+    static Profiles fromLegacy(String ownerName, String backgroundId) {
         Profile o = new Profile();
         o.id = OWNER_ID;
         o.name = ownerName;
         o.color = 0;
         o.owner = true;
-        o.greeting = greeting;
+        o.greeting = true;
         if ("black".equals(backgroundId)) o.theme = "oled";
         else if ("ember".equals(backgroundId)) o.theme = "ember";
         else if ("sky".equals(backgroundId)) o.theme = "frost";
