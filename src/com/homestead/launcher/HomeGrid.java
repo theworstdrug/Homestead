@@ -225,12 +225,15 @@ public class HomeGrid implements SettingsPanel.Host {
         hlp.leftMargin = dp(MARGIN_DP);
         root.addView(head, hlp);
 
+        glowBg = new GlowBackground(c);
         AppModel.ensureLoaded(c);
         Backgrounds.ensureFolder(c);
         applyBackground();
         build();
         updateClock();
     }
+
+    private final GlowBackground glowBg;
 
     /** The chosen look; the overlay and the activity re-read it when they come up. */
     private Backgrounds.Preset look;
@@ -265,8 +268,9 @@ public class HomeGrid implements SettingsPanel.Host {
         if (state.equals(painted)) return;
         painted = state;
         look = p;
-        root.setBackground(photo != null ? Backgrounds.photoDrawable(ctx, photo)
-                : Backgrounds.drawable(p));
+        glowBg.setPalette(Palette.resolve(Prefs.current(ctx).theme, Prefs.current(ctx).accent));
+        glowBg.setPhoto(photo, photo != null ? Backgrounds.dimAlpha(ctx) : 0);
+        root.setBackground(glowBg);
         paintText(clock);
         paintText(greet);
         paintText(date);
@@ -840,6 +844,7 @@ public class HomeGrid implements SettingsPanel.Host {
                 if (has) {
                     focusedCell = v;
                     focusedKey = it.key();
+                    if (it.type == AppModel.TYPE_APP) glowBg.setGlow(it.glow, true);
                     style(v, true, true);
                     if (v == topTile) keepAtTop();
                 } else {

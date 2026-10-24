@@ -94,6 +94,8 @@ public final class AppModel {
         public int glyph;
         /** Inputs: the TV reports a device on this input. */
         public boolean connected;
+        /** The app's colour for the background glow (BannerColor); 0 if it has none. */
+        public int glow;
 
         /** Stable across a re-sort; the handoff carries this, never an index. */
         public String key() {
@@ -241,6 +243,7 @@ public final class AppModel {
                     else a.icon = toBitmap(c, ic, ICON_PX, ICON_PX, false);
                     ic = null;
                 }
+                a.glow = glowOf(a.banner != null ? a.banner : a.icon);
                 ITEMS.add(a);
             }
         }
@@ -443,6 +446,21 @@ public final class AppModel {
      * Redraw into a display-sized bitmap so full-size art is not retained. Banners are
      * rounded here, once, rather than clipped on every frame.
      */
+    /** The dominant colour of a banner or icon, sampled from a small copy; 0 if colourless. */
+    static int glowOf(Bitmap b) {
+        if (b == null) return 0;
+        try {
+            int w = Math.min(64, b.getWidth()), h = Math.max(1, Math.round(w * b.getHeight() / (float) b.getWidth()));
+            Bitmap small = Bitmap.createScaledBitmap(b, w, h, true);
+            int[] px = new int[w * h];
+            small.getPixels(px, 0, w, 0, 0, w, h);
+            if (small != b) small.recycle();
+            return BannerColor.of(px, 0);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     private static Bitmap toBitmap(Context c, Drawable src, int maxW, int maxH, boolean round) {
         if (src == null) return null;
         try {
