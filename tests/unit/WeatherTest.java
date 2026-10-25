@@ -26,6 +26,24 @@ final class WeatherTest {
         urlHasUnits();
         parseRejectsMalformed();
         parsesPlaces();
+        staleForecastExpires();
+        mismatchedArraysRejected();
+    }
+
+    static void staleForecastExpires() {
+        long now = 10L * 24 * 3600 * 1000;
+        T.yes(Weather.isFresh(now - 60 * 60 * 1000L, now), "an hour old is shown");
+        T.yes(!Weather.isFresh(now - 4 * 60 * 60 * 1000L, now), "four hours old is not");
+        T.yes(!Weather.isFresh(0L, now), "never fetched is not");
+    }
+
+    static void mismatchedArraysRejected() throws Exception {
+        final String bad = fixture("forecast.json").replace("\"temperature_2m_min\":[", "\"temperature_2m_min\":[1,");
+        final String shortened = fixture("forecast.json").replaceFirst("\"temperature_2m_max\":\\[[^\\]]*\\]", "\"temperature_2m_max\":[50]");
+        T.fails(IllegalArgumentException.class, new Runnable() {
+            public void run() { Weather.parse(shortened); }
+        }, "a short array is a malformed reply, not a crash");
+        T.yes(bad.length() > 0, "fixture edited");
     }
 
     private static String fixture(String name) throws Exception {

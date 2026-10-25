@@ -90,8 +90,26 @@ final class Weather {
         return "Cloudy";
     }
 
-    @SuppressWarnings("unchecked")
+    /** A forecast older than this is not shown: after a night offline it would be wrong. */
+    static final long MAX_AGE_MS = 3L * 60L * 60L * 1000L;
+
+    static boolean isFresh(long fetchedAt, long now) {
+        return fetchedAt > 0 && now - fetchedAt < MAX_AGE_MS;
+    }
+
+    /** Any unexpected shape (missing keys, arrays of different lengths) is a malformed reply. */
     static Forecast parse(String json) {
+        try {
+            return parseOrThrow(json);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("unexpected reply: " + e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Forecast parseOrThrow(String json) {
         Object root = Json.parse(json);
         if (!(root instanceof Map)) throw new IllegalArgumentException("not an object");
         Map<String, Object> m = (Map<String, Object>) root;

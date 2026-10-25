@@ -281,12 +281,9 @@ public final class AdbBridge {
         } else {
             services = current + ":" + comp;
         }
-        return new String[]{
+        String[] cmds = new String[]{
                 "settings put secure enabled_accessibility_services '" + services + "'",
                 "settings put secure accessibility_enabled 1",
-                // Homestead's idle screen in place of Fire OS's screensaver.
-                "settings put secure screensaver_components '" + IdleDream.COMPONENT + "'",
-                "settings put secure screensaver_enabled 1",
                 // Optional: only the fallback overlay and usage paths need these.
                 "appops set " + pkg + " SYSTEM_ALERT_WINDOW allow",
                 "appops set " + pkg + " GET_USAGE_STATS allow",
@@ -294,6 +291,20 @@ public final class AdbBridge {
                 // Lets HomeKeyWatcher catch Home presses before Amazon's home draws.
                 "pm grant " + pkg + " android.permission.READ_LOGS",
         };
+        // Homestead's idle screen in place of Amazon's screensaver; a screensaver the user
+        // chose (Homestead's or the basic one) is left as it is.
+        String saver = null;
+        try {
+            saver = android.provider.Settings.Secure.getString(c.getContentResolver(), "screensaver_components");
+        } catch (Throwable t) { }
+        if (saver == null || saver.length() == 0 || saver.startsWith("com.amazon")) {
+            String[] more = new String[cmds.length + 2];
+            System.arraycopy(cmds, 0, more, 0, cmds.length);
+            more[cmds.length] = "settings put secure screensaver_components '" + IdleDream.COMPONENT + "'";
+            more[cmds.length + 1] = "settings put secure screensaver_enabled 1";
+            cmds = more;
+        }
+        return cmds;
     }
 
     /**

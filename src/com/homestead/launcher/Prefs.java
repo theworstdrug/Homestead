@@ -66,7 +66,7 @@ public final class Prefs {
     private static final String K_WX_CITY = "wx_city", K_WX_LAT = "wx_lat", K_WX_LON = "wx_lon";
     private static final String K_WX_UNITS = "wx_units", K_WX_CACHE = "wx_cache", K_WX_AT = "wx_cache_at";
     /** The owner profile's name on an install that predates profiles. */
-    static final String LEGACY_OWNER = "Sinclair";
+    static final String LEGACY_OWNER = Profiles.DEFAULT_OWNER_NAME;
 
     public static final int SORT_LAST_USED = 0;
     public static final int SORT_ALPHA = 1;
@@ -138,8 +138,12 @@ public final class Prefs {
 
     /** The chosen city's name, or null: weather is off until a city is chosen. */
     static String weatherCity(Context c) { return sp(c).getString(K_WX_CITY, null); }
-    static double weatherLat(Context c) { return Double.parseDouble(sp(c).getString(K_WX_LAT, "0")); }
-    static double weatherLon(Context c) { return Double.parseDouble(sp(c).getString(K_WX_LON, "0")); }
+    static double weatherLat(Context c) { return number(sp(c).getString(K_WX_LAT, "0")); }
+    static double weatherLon(Context c) { return number(sp(c).getString(K_WX_LON, "0")); }
+
+    private static double number(String s) {
+        try { return Double.parseDouble(s); } catch (RuntimeException e) { return 0; }
+    }
 
     static void setWeatherPlace(Context c, String city, double lat, double lon) {
         sp(c).edit().putString(K_WX_CITY, city).putString(K_WX_LAT, String.valueOf(lat))

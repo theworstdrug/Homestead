@@ -242,6 +242,11 @@ names. Only a computer connected over ADB can read or write it; other apps on th
 
 ## Removing Homestead
 
+Before uninstalling, if Homestead's idle screen is the screensaver, switch it back: TV
+Health → Screensaver (select it to switch to Android's basic one), or from a computer
+`adb shell settings put secure screensaver_components com.android.dreams.basic/.Colors`.
+Otherwise the TV is left pointing at a screensaver that no longer exists.
+
 1. Open **Debloat** and select **Undo everything this app switched off**. This switches
    back on exactly the packages Homestead turned off. Uninstalling the app does *not* do
    this for you.

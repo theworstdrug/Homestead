@@ -96,10 +96,11 @@ public final class HealthPanel {
         final List<Panel.Row> settingRows = new ArrayList<Panel.Row>();
         final List<Check> checks = new ArrayList<Check>();
 
-        // Normal speed: Homestead's motion is drawn with the animator, and 0 turns it off.
-        checks.add(Check.global("window_animation_scale", "1", "Window animation"));
-        checks.add(Check.global("transition_animation_scale", "1", "Transition animation"));
-        checks.add(Check.global("animator_duration_scale", "1", "Animator duration"));
+        // Fire OS's own window animations: off is quicker, normal is fine too. The animator
+        // drives Homestead's motion, which 0 switches off; 0.5 (the old advice) still counts.
+        checks.add(Check.global("window_animation_scale", "0", "Window animation").orAlso("1"));
+        checks.add(Check.global("transition_animation_scale", "0", "Transition animation").orAlso("1"));
+        checks.add(Check.global("animator_duration_scale", "1", "Animator duration").orAlso("0.5"));
         checks.add(Check.global("com.amazon.tv.settings.featured_item_video_enabled", "0",
                 "Home-screen video autoplay"));
         checks.add(Check.secure("amz_limit_ad_tracking", "1", "Limit ad tracking"));
@@ -115,7 +116,7 @@ public final class HealthPanel {
         // Homestead's idle screen, or Android's basic one; either keeps Amazon's ad
         // screensaver away. A fix sets Homestead's.
         checks.add(Check.secure("screensaver_components", IdleDream.COMPONENT, "Screensaver")
-                .orAlso("com.android.dreams.basic/.Colors"));
+                .orAlso("com.android.dreams.basic/.Colors").choice());
 
         for (int i = 0; i < checks.size(); i++) {
             if (i == 3) p.addHeader("Ads & privacy");
@@ -126,10 +127,11 @@ public final class HealthPanel {
             row.cell.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     if (!canApply(c)) return;
+                    // Before applying: with the permission held, apply() finishes at once.
+                    row.setValue("working...");
                     apply(c, new Check[]{ck}, new Runnable() {
                         public void run() { paint(c, ck, row); }
                     });
-                    row.setValue("working...");
                 }
             });
         }
@@ -140,7 +142,11 @@ public final class HealthPanel {
                 if (!canApply(c)) return;
                 applyAll.setValue("working...");
                 final Check[] all = checks.toArray(new Check[checks.size()]);
-                apply(c, all, new Runnable() {
+                // Only what is flagged: a setting already good, such as a chosen
+                // screensaver, is left as it is.
+                List<Check> flagged = new ArrayList<Check>();
+                for (Check k : all) if (!k.isGood(k.read(c))) flagged.add(k);
+                apply(c, flagged.toArray(new Check[flagged.size()]), new Runnable() {
                     public void run() {
                         int good = 0;
                         for (int i = 0; i < all.length; i++) {
@@ -240,14 +246,16 @@ public final class HealthPanel {
      * the ADB link (which also grants it). Calls back on the main thread.
      */
     private static void apply(final Context c, final Check[] checks, final Runnable after) {
+        String[] values = new String[checks.length];
+        for (int i = 0; i < checks.length; i++) values[i] = checks[i].target(checks[i].read(c));
         if (canWriteSettings(c)) {
-            for (int i = 0; i < checks.length; i++) checks[i].applyDirect(c);
+            for (int i = 0; i < checks.length; i++) checks[i].applyDirect(c, values[i]);
             after.run();
             return;
         }
         if (!AdbBridge.canRun(c)) { after.run(); return; }
         String[] cmds = new String[checks.length + 1];
-        for (int i = 0; i < checks.length; i++) cmds[i] = checks[i].command();
+        for (int i = 0; i < checks.length; i++) cmds[i] = checks[i].command(values[i]);
         cmds[checks.length] = "pm grant " + c.getPackageName() + " " + PERM_WSS;
         AdbBridge.run(cmds, new AdbBridge.Callback() {
             public void onDone(boolean ok, String out) { after.run(); }
@@ -262,7 +270,7 @@ public final class HealthPanel {
 
     private static String describe(Check ck, String cur) {
         if (cur == null) return "unset";
-        if (ck.isGood(cur)) return ck.shortWant();
+        if (ck.isGood(cur)) return ck.abbreviate(cur);
         return ck.abbreviate(cur) + " -> " + ck.shortWant();
     }
 
@@ -308,6 +316,15 @@ public final class HealthPanel {
 
         Check orAlso(String v) { also = v; return this; }
 
+        /** Selecting the row switches between want and also, rather than only fixing it. */
+        boolean choice;
+        Check choice() { choice = true; return this; }
+
+        /** What selecting the row sets, given the current value. */
+        String target(String cur) {
+            return choice && cur != null && (want.equals(cur) || sameNumber(cur, want)) && also != null ? also : want;
+        }
+
         String read(Context c) {
             try {
                 return global
@@ -320,19 +337,23 @@ public final class HealthPanel {
             if (cur == null) return false;
             if (want.equals(cur) || cur.equals(also)) return true;
             // Animation scales come back as "0.0" against a wanted "0".
-            try { return Float.parseFloat(cur) == Float.parseFloat(want); }
+            return sameNumber(cur, want) || (also != null && sameNumber(cur, also));
+        }
+
+        private static boolean sameNumber(String a, String b) {
+            try { return Float.parseFloat(a) == Float.parseFloat(b); }
             catch (Throwable t) { return false; }
         }
 
-        void applyDirect(Context c) {
+        void applyDirect(Context c, String value) {
             try {
-                if (global) Settings.Global.putString(c.getContentResolver(), key, want);
-                else Settings.Secure.putString(c.getContentResolver(), key, want);
+                if (global) Settings.Global.putString(c.getContentResolver(), key, value);
+                else Settings.Secure.putString(c.getContentResolver(), key, value);
             } catch (Throwable t) { /* not granted; the ADB route handles it */ }
         }
 
-        String command() {
-            return "settings put " + (global ? "global " : "secure ") + key + " '" + want + "'";
+        String command(String value) {
+            return "settings put " + (global ? "global " : "secure ") + key + " '" + value + "'";
         }
 
         /** A component name is far too wide for the right-hand column. */

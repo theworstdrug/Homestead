@@ -29,6 +29,19 @@ final class ProfilesTest {
         nameCasing();
         nameTooLong();
         settingsSectionsFor();
+        defaultOwnerIsMe();
+        ownerFlagRecoveredOnDecode();
+    }
+
+    static void defaultOwnerIsMe() {
+        T.eq("Me", Profiles.DEFAULT_OWNER_NAME, "a fresh install's owner is called Me");
+    }
+
+    static void ownerFlagRecoveredOnDecode() {
+        // The owner's line is damaged: the first remaining profile becomes the owner, so
+        // someone can always reach Everyone and System.
+        Profiles ps = Profiles.decode("p2|Test|5|frost|default|true|true|true|false|false|\n");
+        T.yes(Profiles.canSeeEveryone(ps.owner()), "an owner always exists");
     }
 
     static void settingsSectionsFor() {

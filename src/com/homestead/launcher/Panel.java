@@ -47,8 +47,11 @@ public class Panel {
 
     /** A row value with no colour of its own: drawn in the theme's secondary text colour. */
     private static final int DEFAULT_VALUE = 0;
-    /** Sheet roots and the sheet inside each, for the exit animation. */
-    private static final java.util.WeakHashMap<View, View> SHEETS = new java.util.WeakHashMap<View, View>();
+    /** A page's root, which knows its sheet for the exit animation (none on full pages). */
+    static final class Root extends FrameLayout {
+        View sheet;
+        Root(Context c) { super(c); }
+    }
 
     /** Every page paints from the current profile's palette. */
     final Palette pal;
@@ -81,7 +84,7 @@ public class Panel {
         this.subtitle = subtitle;
         this.pal = Prefs.palette(c);
 
-        root = new FrameLayout(c);
+        root = new Root(c);
         root.setFocusable(false);
         root.setClickable(true);
 
@@ -161,7 +164,7 @@ public class Panel {
             slp.setMargins(m, m, m, m);
             root.addView(sheet, slp);
             animated = sheet;
-            SHEETS.put(root, sheet);
+            ((Root) root).sheet = sheet;
         } else {
             // Opaque, so the grid or a panel underneath does not show through: the theme with
             // the last app's glow, like the home screen.
@@ -241,7 +244,7 @@ public class Panel {
      * by Panel (they fade).
      */
     static void exit(final View root, final Runnable done) {
-        View sheet = SHEETS.get(root);
+        View sheet = root instanceof Root ? ((Root) root).sheet : null;
         final android.graphics.drawable.Drawable dim = root.getBackground();
         if (sheet != null) {
             sheet.animate().cancel();

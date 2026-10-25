@@ -136,6 +136,13 @@ public class IdleDream extends DreamService {
             return;
         }
         try {
+            String now = Settings.Secure.getString(c.getContentResolver(), "screensaver_components");
+            // Only in place of Amazon's (or none); a screensaver someone chose stays.
+            if (now != null && now.length() > 0 && !now.startsWith("com.amazon")
+                    && !now.equals("com.android.dreams.basic/.Colors")) {
+                Prefs.setIdleScreenSet(c);
+                return;
+            }
             Settings.Secure.putString(c.getContentResolver(), "screensaver_components", COMPONENT);
             Settings.Secure.putInt(c.getContentResolver(), "screensaver_enabled", 1);
             Prefs.setIdleScreenSet(c);

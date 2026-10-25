@@ -811,7 +811,18 @@ public class HomeGrid implements SettingsPanel.Host {
         int y = scroll.getScrollY();
         int[] rx = getRowScrollX();
         build();
-        // Leave focus alone while a panel is open, or the grid would take it from the panel.
+        // Leave focus alone while a panel is open, or the grid would take it from the panel;
+        // but remember where it was, so closing the panel goes back there.
+        if (!panels.isEmpty()) {
+            List<AppModel.Item> r = row == ROW_APPS ? apps : row == ROW_INPUTS ? inputs : row == ROW_MORE ? more : null;
+            if (keep != null && cellsByKey.containsKey(keep)) {
+                focusedKey = keep;
+            } else if (r != null && !r.isEmpty()) {
+                int at = row == ROW_APPS ? rx[0] : row == ROW_INPUTS ? rx[1] : rx[2];
+                focusedKey = r.get(Math.max(0, Math.min(at, r.size() - 1))).key();
+            }
+            focusRow = row;
+        }
         if (panels.isEmpty()) {
             // A tile that went away (uninstalled, hidden) hands the focus to its neighbour.
             if (keep == null || !selectKey(keep)) {
@@ -882,6 +893,12 @@ public class HomeGrid implements SettingsPanel.Host {
             } else {
                 nonTv.add(it);
             }
+        }
+        // TV Health leads to Setup, Debloat and the TV's secure settings: the owner's.
+        if (!Profiles.canSeeEveryone(Prefs.current(ctx))) {
+            List<AppModel.Item> keep = new ArrayList<AppModel.Item>();
+            for (AppModel.Item it : system) if (it.type != AppModel.TYPE_HEALTH) keep.add(it);
+            system = keep;
         }
         if (!Prefs.showInputs(ctx)) ins.clear();
         if (!Prefs.showNonTv(ctx)) nonTv.clear();
@@ -1114,6 +1131,7 @@ public class HomeGrid implements SettingsPanel.Host {
             return;
         }
         if (it.type == AppModel.TYPE_HEALTH) {
+            if (!Profiles.canSeeEveryone(Prefs.current(ctx))) return;
             logOpen(it.label);
             showPanel(HealthPanel.build(ctx, panelHost));
             return;

@@ -43,12 +43,13 @@ final class WeatherStore {
     /** The cached forecast, or null (no city, nothing fetched yet, or an unreadable reply). */
     static synchronized Weather.Forecast get(Context c) {
         if (Prefs.weatherCity(c) == null) return null;
+        if (!Weather.isFresh(Prefs.weatherCacheAt(c), System.currentTimeMillis())) return null;
         String json = Prefs.weatherCache(c);
         if (json == null) return null;
         if (!json.equals(parsedFrom)) {
             parsedFrom = json;
             try { parsed = Weather.parse(json); }
-            catch (IllegalArgumentException e) { parsed = null; Log.w(TAG, "weather cache unreadable: " + e.getMessage()); }
+            catch (RuntimeException e) { parsed = null; Log.w(TAG, "weather cache unreadable: " + e); }
         }
         return parsed;
     }
@@ -66,6 +67,9 @@ final class WeatherStore {
                 try {
                     String json = fetch(url);
                     Weather.parse(json); // a reply we cannot read is not cached
+                    // The city or unit changed while this was in flight: it is not wanted.
+                    if (Prefs.weatherCity(c) == null || !url.equals(Weather.forecastUrl(
+                            Prefs.weatherLat(c), Prefs.weatherLon(c), Prefs.fahrenheit(c)))) return;
                     Prefs.setWeatherCache(c, json, System.currentTimeMillis());
                     failedAt = 0L;
                     if (onNew != null) MAIN.post(onNew);

@@ -32,6 +32,8 @@ final class Profiles {
     static final String[] AVATAR_NAMES =
             {"Blue", "Orange", "Graphite", "Sky", "Pink", "Green", "Violet", "Gold"};
     static final String OWNER_ID = "owner";
+    /** The owner on an install that predates profiles; renamed in Settings → Profiles. */
+    static final String DEFAULT_OWNER_NAME = "Me";
 
     static final class Profile {
         String id;
@@ -218,6 +220,11 @@ final class Profiles {
                 } catch (NumberFormatException ignored) { }
             }
         }
+        // A damaged owner line must not leave the TV with nobody who can reach the owner's
+        // settings: the first profile left takes over.
+        boolean hasOwner = false;
+        for (Profile p : l) hasOwner |= p.owner;
+        if (!hasOwner && !l.isEmpty()) l.get(0).owner = true;
         return new Profiles(l);
     }
 }

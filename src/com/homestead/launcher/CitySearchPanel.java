@@ -94,9 +94,12 @@ final class CitySearchPanel {
         blp.topMargin = Px.of(c, 34);
         blp.bottomMargin = Px.of(c, 30);
         col.addView(box, blp);
+        final boolean[] searching = {false};
         final OnScreenKeyboard kb = new OnScreenKeyboard(c, 24, "Search", new OnScreenKeyboard.Listener() {
             public void onChange(String text) { box.setText(text + "|"); }
             public void onDone(final String text) {
+                if (searching[0]) return;
+                searching[0] = true;
                 box.setText("Searching…");
                 new Thread(new Runnable() {
                     public void run() {
@@ -109,6 +112,9 @@ final class CitySearchPanel {
                         final List<Weather.Place> result = found;
                         MAIN.post(new Runnable() {
                             public void run() {
+                                searching[0] = false;
+                                // Back or Home since: this page is gone, and the reply with it.
+                                if (!root.isAttachedToWindow() || !root.isShown()) return;
                                 if (result == null) {
                                     box.setText("No connection. Try again.");
                                     return;
