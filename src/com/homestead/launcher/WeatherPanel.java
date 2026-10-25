@@ -78,7 +78,7 @@ final class WeatherPanel {
         return p.root;
     }
 
-    /** The idle screen's card: now, then three days. Null when there is no forecast. */
+    /** The idle screen's card: now, the next three hours, then five days. Null with no forecast. */
     static View idleCard(Context c, Palette pal) {
         Weather.Forecast f = WeatherStore.get(c);
         if (f == null) return null;
@@ -93,25 +93,26 @@ final class WeatherPanel {
         now.addView(t);
         now.addView(text(c, f.now.text, 17, pal.sub, false));
         box.addView(now, wrap());
+        // Today's next three hours, then the five days.
+        LinearLayout hours = new LinearLayout(c);
+        hours.setOrientation(LinearLayout.HORIZONTAL);
+        hours.setPadding(0, Px.of(c, 16), 0, 0);
+        for (int i = 1; i < Math.min(4, f.hours.length); i++) {
+            Weather.Hour h = f.hours[i];
+            hours.addView(column(c, pal, h.label, h.kind, h.temp + "°"), colLp(c, i > 1));
+        }
+        box.addView(hours, wrap());
+        View rule = new View(c);
+        rule.setBackgroundColor((pal.text & 0x00FFFFFF) | 0x1F000000);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Px.of(c, 1)));
+        rlp.topMargin = Px.of(c, 14);
+        box.addView(rule, rlp);
         LinearLayout days = new LinearLayout(c);
         days.setOrientation(LinearLayout.HORIZONTAL);
-        days.setPadding(0, Px.of(c, 16), 0, 0);
-        for (int i = 1; i < Math.min(4, f.days.length); i++) {
+        days.setPadding(0, Px.of(c, 12), 0, 0);
+        for (int i = 0; i < Math.min(5, f.days.length); i++) {
             Weather.Day d = f.days[i];
-            LinearLayout col = new LinearLayout(c);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setGravity(Gravity.CENTER_HORIZONTAL);
-            // Explicit WRAP_CONTENT: a vertical LinearLayout's default MATCH_PARENT lets a
-            // wrap-content column shrink to its icon and cut the text.
-            col.addView(text(c, d.label, 14, pal.sub, false), wrap());
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(Px.of(c, 22), Px.of(c, 22));
-            ilp.topMargin = ilp.bottomMargin = Px.of(c, 6);
-            col.addView(icon(c, d.kind, pal.text, 22), ilp);
-            col.addView(text(c, d.hi + "° " + d.lo + "°", 15, pal.text, true), wrap());
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (i > 1) clp.leftMargin = Px.of(c, 22);
-            days.addView(col, clp);
+            days.addView(column(c, pal, d.label, d.kind, d.hi + "° " + d.lo + "°"), colLp(c, i > 0));
         }
         box.addView(days, wrap());
         return box;
@@ -164,6 +165,25 @@ final class WeatherPanel {
         TextView h = text(c, d.hi + "°", 17, pal.text, true);
         row.addView(h, new LinearLayout.LayoutParams(Px.of(c, 40), ViewGroup.LayoutParams.WRAP_CONTENT));
         return row;
+    }
+
+    /** A label, an icon and a value, stacked: one hour or one day on the idle card. */
+    private static View column(Context c, Palette pal, String label, String kind, String value) {
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.addView(text(c, label, 14, pal.sub, false), wrap());
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(Px.of(c, 22), Px.of(c, 22));
+        ilp.topMargin = ilp.bottomMargin = Px.of(c, 6);
+        col.addView(icon(c, kind, pal.text, 22), ilp);
+        col.addView(text(c, value, 15, pal.text, true), wrap());
+        return col;
+    }
+
+    private static LinearLayout.LayoutParams colLp(Context c, boolean gap) {
+        LinearLayout.LayoutParams lp = wrap();
+        if (gap) lp.leftMargin = Px.of(c, 22);
+        return lp;
     }
 
     private static LinearLayout.LayoutParams wrap() {
