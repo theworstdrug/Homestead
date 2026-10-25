@@ -44,10 +44,10 @@ public final class SettingsPanel {
                 "Homestead " + UpdateChecker.installedVersionName(c), Panel.SHEET);
 
         final Panel.Row home = p.addRow("Home screen", homeSummary(c), null).opens();
-        home.setValueColor(0xFF8FA3B8);
+        home.setValueColor(0);
         home.setHelp("Hidden tiles, sorting, grid columns, the clock and the sections.");
         final Panel.Row look = p.addRow("Background", Backgrounds.label(c), null).opens();
-        look.setValueColor(0xFF8FA3B8);
+        look.setValueColor(0);
         look.setHelp("The colour or photo behind the home screen.");
         // Summaries catch up when a sub-page changes something.
         final Runnable summaries = new Runnable() {
@@ -108,7 +108,7 @@ public final class SettingsPanel {
 
         final Panel.Row updates = p.addRow("Check for updates",
                 "v" + UpdateChecker.installedVersionName(c), null);
-        updates.setValueColor(0xFF8FA3B8);
+        updates.setValueColor(0);
         updates.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { UpdatePanel.checkNow(c, host, updates); }
         });
@@ -315,7 +315,7 @@ public final class SettingsPanel {
                         v = on ? "in use, no file yet" : "no file yet";
                     }
                     rows.get(i).setValue(v);
-                    rows.get(i).setValueColor(on ? IN_USE : 0xFF8FA3B8);
+                    rows.get(i).setValueColor(on ? IN_USE : 0);
                 }
             }
         };

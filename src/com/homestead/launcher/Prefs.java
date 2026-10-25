@@ -115,6 +115,12 @@ public final class Prefs {
         return p != null ? p : ps.owner();
     }
 
+    /** The current profile's colours. */
+    static Palette palette(Context c) {
+        Profiles.Profile p = current(c);
+        return Palette.resolve(p.theme, p.accent);
+    }
+
     static void setCurrent(Context c, String id) {
         sp(c).edit().putString(K_PROFILE_CURRENT, id).apply();
     }

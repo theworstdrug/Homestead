@@ -30,7 +30,6 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -446,11 +445,7 @@ public class HomeGrid implements SettingsPanel.Host {
             return false;
         }
         Prefs.setHidden(ctx, target.key(), true);
-        try {
-            android.widget.Toast.makeText(ctx,
-                    target.label + " hidden - restore it in Settings",
-                    android.widget.Toast.LENGTH_SHORT).show();
-        } catch (Throwable t) { }
+        Toasts.show(ctx, root, target.label + " hidden  ·  Restore it in Settings");
         layoutGen++;
         rebuild();
         return true;
@@ -474,11 +469,32 @@ public class HomeGrid implements SettingsPanel.Host {
         v.post(new Runnable() { public void run() { v.requestFocus(); } });
     }
 
-    public void closePanel() {
+    public void closePanel() { closePanel(true); }
+
+    /** Pages still sliding out: off the stack already, removed when their exit ends. */
+    private final List<View> exiting = new ArrayList<View>();
+
+    /**
+     * Close the top page. Animated, it slides out while the page below (or the grid) is
+     * already live, so a key pressed during the exit acts at once.
+     */
+    private void closePanel(boolean animate) {
         if (panels.isEmpty()) return;
-        View top = panels.remove(panels.size() - 1);
+        final View top = panels.remove(panels.size() - 1);
         panelFocus.remove(panelFocus.size() - 1);
-        root.removeView(top);
+        if (top instanceof ViewGroup) {
+            ((ViewGroup) top).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
+        if (animate && ValueAnimatorScale.on()) {
+            exiting.add(top);
+            Panel.exit(top, new Runnable() {
+                public void run() {
+                    if (exiting.remove(top)) root.removeView(top);
+                }
+            });
+        } else {
+            root.removeView(top);
+        }
         if (panels.isEmpty()) {
             setGridFocusable(true);
             takeFocus();
@@ -505,12 +521,22 @@ public class HomeGrid implements SettingsPanel.Host {
      * The first-run wizard stays, since losing it halfway through setup is worse.
      */
     public void closePanels() {
+        // A Home press: no exit animations, the grid is wanted clean and at once.
+        for (View v : exiting) root.removeView(v);
+        exiting.clear();
         while (!panels.isEmpty()) {
             if (!Prefs.onboarded(ctx)
                     && panels.get(panels.size() - 1).getTag() instanceof BackHandler) {
                 return;
             }
-            closePanel();
+            closePanel(false);
+        }
+    }
+
+    /** Whether animations run: Android's animator scale 0 means "off". */
+    private static final class ValueAnimatorScale {
+        static boolean on() {
+            return Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled();
         }
     }
 
@@ -956,7 +982,7 @@ public class HomeGrid implements SettingsPanel.Host {
                 if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
                 else ctx.startService(i);
             } catch (Throwable t) {
-                Toast.makeText(ctx, R.string.home_livetv_failed, Toast.LENGTH_SHORT).show();
+                Toasts.show(ctx, root, ctx.getString(R.string.home_livetv_failed));
             }
             return;
         }

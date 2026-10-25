@@ -42,11 +42,10 @@ import java.util.List;
 public final class OnboardingPanel {
 
     // The app's palette, shared with Panel/HomeGrid.
-    private static final int NAVY = 0xFF0B1F38, ROW = 0xFF102C4A, FOCUS = 0xFF1D4E86;
-    private static final int HEAD = 0xFF7FA8D8, BODY = 0xFF9FB2C6, MUTE = 0xFF7C8FA4;
-    private static final int WHITE = 0xFFF3F6FA, OK = 0xFFA7D28F, WARN = 0xFFE8C468, BAD = 0xFFE89A8A;
-    private static final int GRAD1 = 0xFF6991C7, GRAD2 = 0xFFA3BDED;
-    private static final int GLOW = 0x8CA3BDED, GHOST_LINE = 0x40FFFFFF;
+    // From the current profile's palette, so the first-run pages match the rest of the app.
+    // NAVY is the page colour (and the text on HEAD); HEAD marks the active step.
+    private final int NAVY, ROW, FOCUS, HEAD, BODY, MUTE, WHITE, OK, WARN, BAD;
+    private final int GRAD1, GRAD2, GLOW, GHOST_LINE;
 
     private static final int WELCOME = 0, CHOOSE = 1, HOME = 2, ADB = 3, DONE = 4, SIMPLE = 5;
     private static final int CARD_HOME = 0, CARD_CLEAN = 1, CARD_SIMPLE = 2;
@@ -80,6 +79,21 @@ public final class OnboardingPanel {
     private OnboardingPanel(Context c, SettingsPanel.Host host) {
         this.c = c;
         this.host = host;
+        Palette p = Prefs.palette(c);
+        NAVY = p.base;
+        ROW = p.chip;
+        FOCUS = (p.chip & 0x00FFFFFF) | (Math.min(255, (p.chip >>> 24) * 3) << 24);
+        HEAD = p.ring;
+        BODY = p.sub;
+        MUTE = (p.sub & 0x00FFFFFF) | 0x99000000;
+        WHITE = p.text;
+        OK = p.darkInk ? Panel.onLight(0xFFA7D28F) : 0xFFA7D28F;
+        WARN = p.darkInk ? Panel.onLight(0xFFE8C468) : 0xFFE8C468;
+        BAD = p.darkInk ? Panel.onLight(0xFFE89A8A) : 0xFFE89A8A;
+        GRAD1 = p.neutral;
+        GRAD2 = p.ring;
+        GLOW = p.ring;
+        GHOST_LINE = (p.text & 0x00FFFFFF) | 0x40000000;
 
         // Overridden so Simple mode's step can let the helper try Menu x5 here.
         root = new FrameLayout(c) {
@@ -94,7 +108,9 @@ public final class OnboardingPanel {
                 return super.dispatchKeyEvent(e);
             }
         };
-        root.setBackgroundColor(NAVY);
+        GlowBackground glow = new GlowBackground(c);
+        glow.setPalette(p);
+        root.setBackground(glow);
         root.setClickable(true);
         root.setTag(new HomeGrid.BackHandler() {
             public boolean onBack() {
@@ -203,7 +219,7 @@ public final class OnboardingPanel {
             boolean active = (i == pos);
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadius(dp(4));
-            g.setColor(active ? HEAD : (i < pos ? 0x66A3BDED : 0x33FFFFFF));
+            g.setColor(active ? HEAD : (i < pos ? (HEAD & 0x00FFFFFF) | 0x66000000 : (WHITE & 0x00FFFFFF) | 0x33000000));
             d.setBackground(g);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     dp(active ? 26 : 9), dp(9));
