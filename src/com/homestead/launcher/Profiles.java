@@ -45,6 +45,8 @@ final class Profiles {
         String accent = "default";
         boolean glow = true, ranks = true, greeting = true, owner, usePhoto;
         Set<String> hidden = new HashSet<String>();
+        /** A picture for the avatar (one emoji), or null for the name's first letter. */
+        String emoji;
 
         Profile copy() {
             Profile p = new Profile();
@@ -59,12 +61,17 @@ final class Profiles {
             p.owner = owner;
             p.usePhoto = usePhoto;
             p.hidden = new HashSet<String>(hidden);
+            p.emoji = emoji;
             return p;
         }
 
         int avatarColor() { return AVATAR_COLORS[Math.max(0, Math.min(AVATAR_COLORS.length - 1, color))]; }
 
-        String initial() { return name == null || name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase(); }
+        /** What the avatar shows: the picture, else the name's first letter. */
+        String initial() {
+            if (emoji != null && !emoji.isEmpty()) return emoji;
+            return name == null || name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase();
+        }
     }
 
     private final List<Profile> list;
@@ -189,7 +196,8 @@ final class Profiles {
                     .append('|').append(p.theme).append('|').append(p.accent)
                     .append('|').append(p.glow).append('|').append(p.ranks)
                     .append('|').append(p.greeting).append('|').append(p.owner)
-                    .append('|').append(p.usePhoto).append('|').append(hs).append('\n');
+                    .append('|').append(p.usePhoto).append('|').append(hs)
+                    .append('|').append(p.emoji == null ? "" : p.emoji).append('\n');
         }
         return b.toString();
     }
@@ -200,7 +208,8 @@ final class Profiles {
         if (s != null) {
             for (String line : s.split("\n")) {
                 String[] f = line.split("\\|", -1);
-                if (f.length != 11 || f[0].isEmpty() || f[1].isEmpty()) continue;
+                // Eleven fields before profile pictures, twelve since.
+                if ((f.length != 11 && f.length != 12) || f[0].isEmpty() || f[1].isEmpty()) continue;
                 try {
                     Profile p = new Profile();
                     p.id = f[0];
@@ -216,6 +225,7 @@ final class Profiles {
                     if (!f[10].isEmpty()) {
                         for (String k : f[10].split(",")) p.hidden.add(k);
                     }
+                    if (f.length == 12 && !f[11].isEmpty()) p.emoji = f[11];
                     l.add(p);
                 } catch (NumberFormatException ignored) { }
             }

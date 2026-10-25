@@ -131,6 +131,8 @@ final class TopBar extends FrameLayout {
 
     void setProfile(Profiles.Profile p) {
         avatar.setText(p.initial());
+        // A picture fills more of the circle than a letter does.
+        avatar.setTextSize(TypedValue.COMPLEX_UNIT_PX, Px.f(getContext(), p.emoji != null ? 26 : 20));
         avatarColor = p.avatarColor();
         paint();
     }

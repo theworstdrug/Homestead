@@ -20,12 +20,12 @@ package com.homestead.launcher;
 final class Palette {
     static final String[] THEME_IDS = {"midnight", "oled", "frost", "ember"};
     static final String[] ACCENT_IDS =
-            {"default", "blue", "violet", "pink", "red", "orange", "gold", "green", "teal"};
+            {"default", "blue", "violet", "pink", "red", "orange", "gold", "green", "teal", "brown"};
     private static final int[] ACCENTS = {
             0, 0xFF4C6FFF, 0xFF8B5CF6, 0xFFD94F8A, 0xFFE5484D,
-            0xFFF28A3C, 0xFFE8B931, 0xFF2FA37A, 0xFF21A6B5};
+            0xFFF28A3C, 0xFFE8B931, 0xFF2FA37A, 0xFF21A6B5, 0xFF8D5A34};
     static final String[] ACCENT_NAMES =
-            {"Theme default", "Blue", "Violet", "Pink", "Red", "Orange", "Gold", "Green", "Teal"};
+            {"Theme default", "Blue", "Violet", "Pink", "Red", "Orange", "Gold", "Green", "Teal", "Brown"};
 
     final String id, accentId, name;
     /** Screen background, main and secondary text. */

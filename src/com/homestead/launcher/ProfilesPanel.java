@@ -63,6 +63,13 @@ final class ProfilesPanel {
             }
         }).opens().setValueColor(0);
 
+        p.addRow("Picture", pr.emoji == null ? "Letter" : pr.emoji, new Runnable() {
+            public void run() {
+                host.closePanel();
+                host.showPanel(buildPicture(c, host, id));
+            }
+        }).opens().setValueColor(0);
+
         final Panel.Row colour = p.addRow("Colour", Profiles.AVATAR_NAMES[pr.color], null);
         colour.setValueColor(0);
         colour.cell.setOnClickListener(new View.OnClickListener() {
@@ -105,6 +112,76 @@ final class ProfilesPanel {
                 host.showPanel(build(c, host));
             }
         });
+        return p.root;
+    }
+
+    /** Pictures to choose from; the first, empty, means the name's first letter. */
+    static final String[] PICTURES = {
+            "",
+            "\uD83E\uDDDB\uD83C\uDFFE", "\uD83E\uDDDB", "\uD83C\uDF38", "\uD83C\uDF37", "\uD83C\uDF3B",
+            "\uD83C\uDF4C", "\uD83C\uDF53", "\uD83C\uDF55", "\uD83C\uDFB5", "\uD83C\uDFAE", "\u26BD",
+            "\uD83C\uDFC0", "\uD83D\uDC36", "\uD83D\uDC31", "\uD83E\uDD8A", "\uD83D\uDC3C", "\uD83E\uDD84",
+            "\uD83D\uDC38", "\uD83D\uDE80", "\u2B50", "\uD83C\uDF19", "\uD83D\uDD25", "\uD83D\uDC51",
+    };
+
+    /** A grid of pictures for the avatar; selecting one keeps it and goes back. */
+    private static View buildPicture(final Context c, final SettingsPanel.Host host, final String id) {
+        final Profiles.Profile pr = Prefs.profiles(c).byId(id);
+        final Panel p = new Panel(c, "Picture for " + pr.name, "Shown in the avatar instead of the letter", Panel.SHEET);
+        final Palette ui = p.pal;
+        android.widget.LinearLayout grid = new android.widget.LinearLayout(c);
+        grid.setOrientation(android.widget.LinearLayout.VERTICAL);
+        grid.setPadding(Px.of(c, 8), Px.of(c, 8), Px.of(c, 8), Px.of(c, 8));
+        android.widget.LinearLayout row = null;
+        View current = null;
+        for (int i = 0; i < PICTURES.length; i++) {
+            if (i % 6 == 0) {
+                row = new android.widget.LinearLayout(c);
+                row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                grid.addView(row);
+            }
+            final String pic = PICTURES[i];
+            final android.widget.TextView t = new android.widget.TextView(c);
+            t.setText(pic.isEmpty() ? pr.name.substring(0, 1).toUpperCase() : pic);
+            t.setGravity(android.view.Gravity.CENTER);
+            t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Px.f(c, 30));
+            t.setTextColor(ui.text);
+            t.setFocusable(true);
+            t.setFocusableInTouchMode(true);
+            View.OnFocusChangeListener f = new View.OnFocusChangeListener() {
+                public void onFocusChange(View v, boolean has) {
+                    GradientDrawable d = new GradientDrawable();
+                    d.setCornerRadius(Px.f(c, 14));
+                    d.setColor(has ? ui.chipOn : 0);
+                    t.setBackground(d);
+                    t.setTextColor(has ? ui.chipOnText : ui.text);
+                }
+            };
+            t.setOnFocusChangeListener(f);
+            f.onFocusChange(t, false);
+            t.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    Profiles.Profile e = Prefs.profiles(c).byId(id).copy();
+                    e.emoji = pic.isEmpty() ? null : pic;
+                    Prefs.setProfiles(c, Prefs.profiles(c).replace(e));
+                    host.closePanel();
+                    host.profileChanged();
+                    host.showPanel(buildOne(c, host, id));
+                }
+            });
+            int sz = Px.of(c, 60);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(sz, sz);
+            lp.rightMargin = lp.bottomMargin = Px.of(c, 6);
+            row.addView(t, lp);
+            if (pic.equals(pr.emoji == null ? "" : pr.emoji)) current = t;
+        }
+        p.addView(grid, Px.of(c, 6));
+        if (current != null) {
+            final View start = current;
+            p.root.post(new Runnable() {
+                public void run() { p.root.post(new Runnable() { public void run() { start.requestFocus(); } }); }
+            });
+        }
         return p.root;
     }
 

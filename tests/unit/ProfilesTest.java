@@ -31,6 +31,32 @@ final class ProfilesTest {
         settingsSectionsFor();
         defaultOwnerIsMe();
         ownerFlagRecoveredOnDecode();
+        emojiRoundTrips();
+        oldLinesStillDecode();
+        emojiIsTheAvatar();
+    }
+
+    static void emojiRoundTrips() {
+        Profiles.Profile k = kid();
+        k.emoji = "\uD83E\uDDDB\uD83C\uDFFE"; // vampire, medium-dark skin tone
+        Profiles back = Profiles.decode(Profiles.fromLegacy("Sinclair", "midnight").add(k).encode());
+        T.eq(k.emoji, back.byId("p2").emoji, "emoji kept");
+        T.eq(null, back.owner().emoji, "no emoji is no emoji");
+    }
+
+    static void oldLinesStillDecode() {
+        // The format before pictures: eleven fields.
+        Profiles ps = Profiles.decode("owner|Sinclair|0|midnight|default|true|true|true|true|false|app:x\n");
+        T.eq(1, ps.size(), "an eleven-field line still reads");
+        T.eq("Sinclair", ps.owner().name, "name");
+        T.eq(null, ps.owner().emoji, "no picture");
+    }
+
+    static void emojiIsTheAvatar() {
+        Profiles.Profile k = kid();
+        T.eq("T", k.initial(), "the initial without a picture");
+        k.emoji = "\uD83C\uDF4C";
+        T.eq("\uD83C\uDF4C", k.initial(), "the picture when there is one");
     }
 
     static void defaultOwnerIsMe() {

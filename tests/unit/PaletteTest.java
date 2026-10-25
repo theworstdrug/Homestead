@@ -21,6 +21,12 @@ final class PaletteTest {
         accentReplacesRingAndChip();
         accentTextContrasts();
         everyCombinationResolves();
+        brownAccent();
+    }
+
+    static void brownAccent() {
+        T.yes(Palette.indexOf(Palette.ACCENT_IDS, "brown") > 0, "brown is an accent");
+        T.eq(0xFFFFFFFF, Palette.resolve("midnight", "brown").chipOnText, "light text on brown");
     }
 
     static void resolvesKnownTheme() {
