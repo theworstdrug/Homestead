@@ -100,6 +100,17 @@
               android:authorities="com.homestead.launcher.background"
               android:exported="true"/>
 
+    <!-- The idle screen, in place of Fire OS's screensaver (screensaver_components). -->
+    <service android:name=".IdleDream"
+             android:exported="true"
+             android:label="Homestead"
+             android:permission="android.permission.BIND_DREAM_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.dreams.DreamService"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
+    </service>
+
     <!-- Imports and exports the settings from "adb shell content read/write", so they can
          move to an install signed with another key. Same guard as the photo provider: the
          shell user and root only. -->

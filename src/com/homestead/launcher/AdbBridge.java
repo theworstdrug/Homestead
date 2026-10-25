@@ -284,6 +284,9 @@ public final class AdbBridge {
         return new String[]{
                 "settings put secure enabled_accessibility_services '" + services + "'",
                 "settings put secure accessibility_enabled 1",
+                // Homestead's idle screen in place of Fire OS's screensaver.
+                "settings put secure screensaver_components '" + IdleDream.COMPONENT + "'",
+                "settings put secure screensaver_enabled 1",
                 // Optional: only the fallback overlay and usage paths need these.
                 "appops set " + pkg + " SYSTEM_ALERT_WINDOW allow",
                 "appops set " + pkg + " GET_USAGE_STATS allow",

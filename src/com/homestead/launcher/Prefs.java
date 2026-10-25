@@ -61,6 +61,7 @@ public final class Prefs {
     private static final String K_PROFILE_CURRENT = "profile_current";
     private static final String K_PROFILES_MIGRATED = "profiles_migrated";
     private static final String K_LAST_GLOW = "last_glow";
+    private static final String K_IDLE_SET = "idle_screen_set";
     /** The owner profile's name on an install that predates profiles. */
     static final String LEGACY_OWNER = "Sinclair";
 
@@ -129,6 +130,11 @@ public final class Prefs {
     static void updateCurrent(Context c, Profiles.Profile p) {
         setProfiles(c, profiles(c).replace(p));
     }
+
+    /** Whether this install has made its idle screen the screensaver (done once). */
+    static boolean idleScreenSet(Context c) { return sp(c).getBoolean(K_IDLE_SET, false); }
+
+    static void setIdleScreenSet(Context c) { sp(c).edit().putBoolean(K_IDLE_SET, true).apply(); }
 
     /** The last app colour the home screen glowed with, for the idle screen. */
     static int lastGlow(Context c) { return sp(c).getInt(K_LAST_GLOW, 0); }

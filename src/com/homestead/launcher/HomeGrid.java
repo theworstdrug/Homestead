@@ -287,6 +287,7 @@ public class HomeGrid implements SettingsPanel.Host {
 
         AppModel.ensureLoaded(c);
         Backgrounds.ensureFolder(c);
+        IdleDream.ensureInstalled(c);
         applyBackground();
         build();
         updateClock();

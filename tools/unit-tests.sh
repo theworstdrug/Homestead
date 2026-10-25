@@ -17,6 +17,7 @@ PURE=(
   Palette.java
   Profiles.java
   SettingsTransfer.java
+  Wave.java
 )
 
 rm -rf build-tests

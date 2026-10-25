@@ -96,9 +96,10 @@ public final class HealthPanel {
         final List<Panel.Row> settingRows = new ArrayList<Panel.Row>();
         final List<Check> checks = new ArrayList<Check>();
 
-        checks.add(Check.global("window_animation_scale", "0", "Window animation"));
-        checks.add(Check.global("transition_animation_scale", "0", "Transition animation"));
-        checks.add(Check.global("animator_duration_scale", "0.5", "Animator duration"));
+        // Normal speed: Homestead's motion is drawn with the animator, and 0 turns it off.
+        checks.add(Check.global("window_animation_scale", "1", "Window animation"));
+        checks.add(Check.global("transition_animation_scale", "1", "Transition animation"));
+        checks.add(Check.global("animator_duration_scale", "1", "Animator duration"));
         checks.add(Check.global("com.amazon.tv.settings.featured_item_video_enabled", "0",
                 "Home-screen video autoplay"));
         checks.add(Check.secure("amz_limit_ad_tracking", "1", "Limit ad tracking"));
@@ -111,8 +112,10 @@ public final class HealthPanel {
         checks.add(Check.secure("pact_usage_collection_enabled", "0", "PACT usage collection"));
         checks.add(Check.secure("limit_ad_tracking", "1", "Limit ad tracking (platform)"));
         checks.add(Check.secure("non_amz_limit_ad_tracking", "1", "Limit ad tracking (3rd party)"));
-        checks.add(Check.secure("screensaver_components", "com.android.dreams.basic/.Colors",
-                "Screensaver"));
+        // Homestead's idle screen, or Android's basic one; either keeps Amazon's ad
+        // screensaver away. A fix sets Homestead's.
+        checks.add(Check.secure("screensaver_components", IdleDream.COMPONENT, "Screensaver")
+                .orAlso("com.android.dreams.basic/.Colors"));
 
         for (int i = 0; i < checks.size(); i++) {
             if (i == 3) p.addHeader("Ads & privacy");
@@ -294,12 +297,16 @@ public final class HealthPanel {
     private static class Check {
         final boolean global;
         final String key, want, label;
+        /** Another value that also counts as good. */
+        String also;
 
         private Check(boolean g, String k, String w, String l) {
             global = g; key = k; want = w; label = l;
         }
         static Check global(String k, String w, String l) { return new Check(true, k, w, l); }
         static Check secure(String k, String w, String l) { return new Check(false, k, w, l); }
+
+        Check orAlso(String v) { also = v; return this; }
 
         String read(Context c) {
             try {
@@ -311,7 +318,7 @@ public final class HealthPanel {
 
         boolean isGood(String cur) {
             if (cur == null) return false;
-            if (want.equals(cur)) return true;
+            if (want.equals(cur) || cur.equals(also)) return true;
             // Animation scales come back as "0.0" against a wanted "0".
             try { return Float.parseFloat(cur) == Float.parseFloat(want); }
             catch (Throwable t) { return false; }
@@ -333,6 +340,8 @@ public final class HealthPanel {
 
         String abbreviate(String v) {
             if (v == null) return "unset";
+            if (v.equals(IdleDream.COMPONENT)) return "Homestead";
+            if (v.equals("com.android.dreams.basic/.Colors")) return "basic";
             if (key.endsWith("_scale")) {
                 try {
                     float f = Float.parseFloat(v);

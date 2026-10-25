@@ -28,6 +28,7 @@ public final class UnitTests {
             MotionTest.run();
             ProfilesTest.run();
             FlavorTest.run();
+            WaveTest.run();
         } catch (Throwable t) {
             System.out.println("FAIL " + t.getMessage());
             t.printStackTrace(System.out);
