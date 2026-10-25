@@ -28,6 +28,33 @@ final class WeatherTest {
         parsesPlaces();
         staleForecastExpires();
         mismatchedArraysRejected();
+        nightKinds();
+        hoursFollowSunset();
+        urlAsksForDaylight();
+    }
+
+    static void nightKinds() {
+        T.eq("moon", Weather.kind(0, false), "clear night");
+        T.eq("partlyNight", Weather.kind(2, false), "partly cloudy night");
+        T.eq("cloud", Weather.kind(3, false), "cloud is cloud by night too");
+        T.eq("rain", Weather.kind(61, false), "rain is rain");
+        T.eq("sun", Weather.kind(0, true), "clear day");
+    }
+
+    static void hoursFollowSunset() throws Exception {
+        Weather.Forecast f = Weather.parse(fixture("forecast.json"));
+        // The fixture's next six hours start at 4 AM: all before sunrise (is_day 0).
+        for (Weather.Hour h : f.hours) {
+            T.yes(!"sun".equals(h.kind) && !"partly".equals(h.kind), "no sun before sunrise: " + h.label + " " + h.kind);
+        }
+        String noFlag = fixture("forecast.json").replace(",\"is_day\":0}", "}");
+        T.yes(Weather.parse(noFlag).now.kind.length() > 0, "a reply without is_day still reads");
+    }
+
+    static void urlAsksForDaylight() {
+        String u = Weather.forecastUrl(32.9, -97.4, true);
+        T.yes(u.contains("current=temperature_2m,weather_code,is_day"), "current is_day");
+        T.yes(u.contains("hourly=temperature_2m,weather_code,is_day"), "hourly is_day");
     }
 
     static void staleForecastExpires() {
@@ -57,8 +84,9 @@ final class WeatherTest {
         T.eq("Today", f.days[0].label, "first day is today");
         T.eq("Now", f.hours[0].label, "first hour is now");
         T.yes(f.days[0].lo <= f.days[0].hi, "low <= high");
-        T.eq(47, f.now.temp, "current temperature, rounded");
-        T.eq("cloud", f.now.kind, "code 3 is cloud");
+        T.eq(64, f.now.temp, "current temperature, rounded");
+        T.eq("moon", f.now.kind, "clear at 4 AM, after sunset, is the moon");
+        T.eq("Clear", f.now.text, "still described as clear");
         T.yes(f.now.text.length() > 0, "a description");
     }
 

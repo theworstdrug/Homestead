@@ -33,8 +33,8 @@ public final class SettingsPanel {
         void closePanel();
         /** The current profile changed: its look, hidden tiles and greeting. */
         void profileChanged();
-        /** Paint a palette everywhere without saving it (a preview). */
-        void previewPalette(Palette p);
+        /** Paint a palette everywhere without saving it (a preview); photo: over the photo. */
+        void previewPalette(Palette p, boolean photo);
         /** Back to the current profile's saved look. */
         void applyPalette();
     }

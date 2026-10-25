@@ -355,9 +355,14 @@ public class HomeGrid implements SettingsPanel.Host {
         applyBackground();
     }
 
-    /** Paint p everywhere without saving it; applyPalette() puts the saved one back. */
-    public void previewPalette(Palette p) {
+    /**
+     * Paint p everywhere without saving it, over the photo or the theme's base;
+     * applyPalette() puts the saved look back. One repaint, cheap enough for every move.
+     */
+    public void previewPalette(Palette p, boolean photo) {
         previewing = true;
+        Bitmap b = photo ? Backgrounds.lastPhoto() : null;
+        glowBg.setPhoto(b, b != null ? Backgrounds.dimAlpha(ctx) : 0);
         paint(p);
     }
 
@@ -722,7 +727,7 @@ public class HomeGrid implements SettingsPanel.Host {
         public void showPanel(View v) { grid.showPanel(v); }
         public void closePanel() { grid.closePanel(); }
         public void profileChanged() { grid.profileChanged(); }
-        public void previewPalette(Palette p) { grid.previewPalette(p); }
+        public void previewPalette(Palette p, boolean photo) { grid.previewPalette(p, photo); }
         public void applyPalette() { grid.applyPalette(); }
     }
 

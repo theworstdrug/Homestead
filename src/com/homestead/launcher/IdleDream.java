@@ -44,6 +44,22 @@ public class IdleDream extends DreamService {
     FrameLayout forecastSlot;
 
     private Palette pal;
+    private final java.util.Random random = new java.util.Random();
+    /** Every few minutes the clock and the card glide a little, so nothing stays on one spot. */
+    private static final long DRIFT_MS = 3L * 60L * 1000L;
+    private static final float DRIFT_X = 28f, DRIFT_Y = 18f;
+
+    private final Runnable drift = new Runnable() {
+        public void run() {
+            for (android.view.View v : new android.view.View[]{clock, forecastSlot}) {
+                if (v == null) continue;
+                v.animate().translationX(Px.f(IdleDream.this, (random.nextFloat() * 2 - 1) * DRIFT_X))
+                        .translationY(Px.f(IdleDream.this, (random.nextFloat() * 2 - 1) * DRIFT_Y))
+                        .setDuration(4000).start();
+            }
+            handler.postDelayed(this, DRIFT_MS);
+        }
+    };
 
     private final Runnable tick = new Runnable() {
         public void run() {
@@ -104,11 +120,13 @@ public class IdleDream extends DreamService {
     public void onDreamingStarted() {
         super.onDreamingStarted();
         handler.post(tick);
+        handler.postDelayed(drift, DRIFT_MS);
     }
 
     @Override
     public void onDreamingStopped() {
         handler.removeCallbacks(tick);
+        handler.removeCallbacks(drift);
         super.onDreamingStopped();
     }
 
@@ -121,6 +139,7 @@ public class IdleDream extends DreamService {
 
     private void updateClock() {
         if (clock == null) return;
+        clock.setVisibility(Prefs.clockMode(this) == Prefs.CLOCK_OFF ? android.view.View.GONE : android.view.View.VISIBLE);
         boolean h12 = Prefs.clockMode(this) == Prefs.CLOCK_12H;
         clock.setText(new SimpleDateFormat(h12 ? "h:mm" : "HH:mm", Locale.getDefault()).format(new Date()));
     }

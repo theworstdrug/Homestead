@@ -147,9 +147,16 @@ final class TopBar extends FrameLayout {
 
     private String weatherKind;
 
+    private WeatherIcons weatherIcon;
+
     private void paintWeatherIcon() {
+        if (weatherIcon != null) weatherIcon.setAnimated(false);
+        weatherIcon = null;
         if (weatherKind == null) { weather.setCompoundDrawables(null, null, null, null); return; }
         WeatherIcons d = new WeatherIcons(weatherKind, palette.text);
+        weatherIcon = d;
+        // Falling rain or snow, while the home screen is up.
+        d.setAnimated(isAttachedToWindow());
         int s = Px.of(getContext(), 22);
         d.setBounds(0, 0, s, s);
         weather.setCompoundDrawables(d, null, null, null);
@@ -159,6 +166,16 @@ final class TopBar extends FrameLayout {
     void setPalette(Palette p) {
         palette = p;
         paint();
+    }
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (weatherIcon != null) weatherIcon.setAnimated(true);
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        if (weatherIcon != null) weatherIcon.setAnimated(false);
+        super.onDetachedFromWindow();
     }
 
     /** The greeting fades and lifts away while the focus is below the apps row. */
@@ -197,7 +214,8 @@ final class TopBar extends FrameLayout {
         a.setShape(GradientDrawable.OVAL);
         a.setColor(avatarColor);
         a.setStroke(Px.of(getContext(), focused == avatar ? 3 : 2), focused == avatar ? palette.ring : palette.sub);
-        avatar.setBackground(a);
+        // The ring straddles the circle's edge: inset it so the whole ring shows.
+        avatar.setBackground(new android.graphics.drawable.InsetDrawable(a, Px.of(getContext(), 2)));
         avatar.setTextColor(0xFFFFFFFF);
 
         GradientDrawable w = new GradientDrawable();

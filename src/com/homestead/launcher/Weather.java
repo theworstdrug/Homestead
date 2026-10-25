@@ -53,8 +53,8 @@ final class Weather {
 
     static String forecastUrl(double lat, double lon, boolean fahrenheit) {
         return "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
-                + "&current=temperature_2m,weather_code"
-                + "&hourly=temperature_2m,weather_code"
+                + "&current=temperature_2m,weather_code,is_day"
+                + "&hourly=temperature_2m,weather_code,is_day"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
                 + "&timezone=auto&forecast_days=5"
                 + (fahrenheit ? "&temperature_unit=fahrenheit" : "");
@@ -66,6 +66,18 @@ final class Weather {
         } catch (UnsupportedEncodingException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * The icon for an hour: by night (after that day's sunset, as Open-Meteo's is_day says)
+     * a clear sky is the moon and a partly cloudy one the moon behind a cloud.
+     */
+    static String kind(int code, boolean day) {
+        String k = kind(code);
+        if (day) return k;
+        if (k.equals("sun")) return "moon";
+        if (k.equals("partly")) return "partlyNight";
+        return k;
     }
 
     /** WMO weather code to the icon: sun, partly, cloud, fog, rain, snow or storm. */
@@ -82,7 +94,8 @@ final class Weather {
 
     static String describe(String kind) {
         if ("sun".equals(kind)) return "Clear";
-        if ("partly".equals(kind)) return "Partly cloudy";
+        if ("partly".equals(kind) || "partlyNight".equals(kind)) return "Partly cloudy";
+        if ("moon".equals(kind)) return "Clear";
         if ("fog".equals(kind)) return "Fog";
         if ("rain".equals(kind)) return "Rain";
         if ("snow".equals(kind)) return "Snow";
@@ -120,10 +133,12 @@ final class Weather {
         Forecast f = new Forecast();
         f.now = new Now();
         f.now.temp = round(cur.get("temperature_2m"));
-        f.now.kind = kind(round(cur.get("weather_code")));
+        f.now.kind = kind(round(cur.get("weather_code")), isDay(cur.get("is_day")));
         f.now.text = describe(f.now.kind);
 
         List<Object> ht = list(hourly, "time"), htemp = list(hourly, "temperature_2m"), hcode = list(hourly, "weather_code");
+        // Older replies (cached before is_day was asked for) have no day/night: all day.
+        List<Object> hday = hourly.get("is_day") instanceof List ? (List<Object>) hourly.get("is_day") : null;
         String nowTime = String.valueOf(cur.get("time"));
         String nowHour = nowTime.length() >= 13 ? nowTime.substring(0, 13) : nowTime;
         int start = 0;
@@ -136,7 +151,7 @@ final class Weather {
             Hour h = new Hour();
             h.label = k == 0 ? "Now" : hourLabel(String.valueOf(ht.get(start + k)));
             h.temp = round(htemp.get(start + k));
-            h.kind = kind(round(hcode.get(start + k)));
+            h.kind = kind(round(hcode.get(start + k)), hday == null || isDay(hday.get(start + k)));
             f.hours[k] = h;
         }
 
@@ -188,6 +203,11 @@ final class Weather {
         Object v = m.get(key);
         if (!(v instanceof List)) throw new IllegalArgumentException("missing " + key);
         return (List<Object>) v;
+    }
+
+    /** Open-Meteo's is_day: 1 between sunrise and sunset; missing means day. */
+    private static boolean isDay(Object v) {
+        return !(v instanceof Double) || (Double) v >= 0.5;
     }
 
     private static int round(Object v) {

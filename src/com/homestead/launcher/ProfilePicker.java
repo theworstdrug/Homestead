@@ -134,7 +134,8 @@ final class ProfilePicker {
         label.setTextSize(TypedValue.COMPLEX_UNIT_PX, Px.f(c, 20));
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        llp.topMargin = Px.of(c, 14);
+        // Room for the circle to grow on focus without covering the name.
+        llp.topMargin = Px.of(c, 22);
         item.addView(label, llp);
         final Context ctx = c;
         View.OnFocusChangeListener f = new View.OnFocusChangeListener() {
@@ -150,7 +151,12 @@ final class ProfilePicker {
         return item;
     }
 
-    static GradientDrawable circleBg(Context c, Palette pal, int color, boolean dashed, boolean ring) {
+    /** The avatar circle, inset so its ring (which straddles the edge) is never cut off. */
+    static android.graphics.drawable.Drawable circleBg(Context c, Palette pal, int color, boolean dashed, boolean ring) {
+        return new android.graphics.drawable.InsetDrawable(circle(c, pal, color, dashed, ring), Px.of(c, 3));
+    }
+
+    private static GradientDrawable circle(Context c, Palette pal, int color, boolean dashed, boolean ring) {
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         if (dashed) {

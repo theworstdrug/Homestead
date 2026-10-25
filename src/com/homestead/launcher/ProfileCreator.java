@@ -216,7 +216,7 @@ final class ProfileCreator {
                     ThemeCards.focus(v, pal, has);
                     if (has) {
                         theme = index;
-                        host.previewPalette(themed);
+                        host.previewPalette(themed, false);
                     }
                 }
             });

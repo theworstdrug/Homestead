@@ -60,14 +60,18 @@ final class ThemePanel {
             final String id = all.get(i);
             boolean photo = id.equals("photo");
             Profiles.Profile me = Prefs.current(c);
-            final Palette shown = Palette.resolve(photo ? me.theme : id, me.accent);
             View card = ThemeCards.card(c, ui, Palette.resolve(photo ? me.theme : id, "default"), glow,
                     isSaved(me, id));
             if (photo) ((TextView[]) card.getTag())[0].setText("Photo");
             card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 public void onFocusChange(View v, boolean has) {
                     ThemeCards.focus(v, ui, has);
-                    if (has) host.previewPalette(shown);
+                    if (has) {
+                        // Built now, not when the page opened: an accent chosen since counts.
+                        Profiles.Profile now = Prefs.current(c);
+                        boolean ph = id.equals("photo");
+                        host.previewPalette(Palette.resolve(ph ? now.theme : id, now.accent), ph);
+                    }
                 }
             });
             card.setOnClickListener(new View.OnClickListener() {
@@ -113,7 +117,10 @@ final class ThemePanel {
             dot.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 public void onFocusChange(View v, boolean has) {
                     paintSwatch(c, ui, v, acc, has, acc.equals(Prefs.current(c).accent));
-                    if (has) host.previewPalette(Palette.resolve(Prefs.current(c).theme, acc));
+                    if (has) {
+                        Profiles.Profile now = Prefs.current(c);
+                        host.previewPalette(Palette.resolve(now.theme, acc), now.usePhoto);
+                    }
                 }
             });
             dot.setOnClickListener(new View.OnClickListener() {
