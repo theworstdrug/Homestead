@@ -534,7 +534,9 @@ public class HomeGrid implements SettingsPanel.Host {
      * The first-run wizard stays, since losing it halfway through setup is worse.
      */
     public void closePanels() {
-        // A Home press: no exit animations, the grid is wanted clean and at once.
+        // A Home press: no exit animations, the grid is wanted clean and at once, in the
+        // saved look (a theme only being previewed must not stick).
+        if (previewing) applyPalette();
         for (View v : exiting) root.removeView(v);
         exiting.clear();
         while (!panels.isEmpty()) {

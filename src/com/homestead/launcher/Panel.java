@@ -266,6 +266,12 @@ public class Panel {
 
     // ---------------------------------------------------------------- building
 
+    /** Custom content in the list, for pages that are more than rows (the Theme page). */
+    public void addView(View v, int topMargin) {
+        column.addView(v, lp(topMargin, dp(6)));
+        lastRow = null;
+    }
+
     /** A section heading inside the list. */
     public void addHeader(String text) {
         TextView h = text(text.toUpperCase(Locale.US), 12, pal.sub);

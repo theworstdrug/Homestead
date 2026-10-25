@@ -28,6 +28,15 @@ final class ProfilesTest {
         decodeGarbageGivesNothing();
         nameCasing();
         nameTooLong();
+        settingsSectionsFor();
+    }
+
+    static void settingsSectionsFor() {
+        Profiles ps = Profiles.fromLegacy("Sinclair", "midnight").add(kid());
+        T.eq(java.util.Arrays.asList("for", "everyone", "home", "system"),
+                java.util.Arrays.asList(Profiles.settingsSections(ps.owner())), "owner sees all");
+        T.eq(java.util.Arrays.asList("for", "home"),
+                java.util.Arrays.asList(Profiles.settingsSections(ps.byId("p2"))), "others see their own and the home screen");
     }
 
     static void nameCasing() {

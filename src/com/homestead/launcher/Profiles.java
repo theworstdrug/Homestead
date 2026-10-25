@@ -121,6 +121,12 @@ final class Profiles {
 
     static boolean canSeeEveryone(Profile p) { return p != null && p.owner; }
 
+    /** The Settings sections a profile sees, in order: the owner sees all four. */
+    static String[] settingsSections(Profile p) {
+        return canSeeEveryone(p) ? new String[]{"for", "everyone", "home", "system"}
+                : new String[]{"for", "home"};
+    }
+
     /**
      * A name as the on-screen keyboard makes it: letters and single spaces only, each word
      * capitalised, at most 12 characters. The stored format splits on | and , so nothing
