@@ -89,6 +89,16 @@ public final class SettingsPanel {
             });
             all.cell.setOnFocusChangeListener(chain(all.cell.getOnFocusChangeListener(),
                     new Runnable() { public void run() { all.setValue(hiddenLabel(Prefs.hiddenCount(c))); } }));
+            final Panel.Row wx = p.addRow("Weather", Prefs.weatherCity(c) == null ? "Off" : Prefs.weatherCity(c), null).opens();
+            wx.setValueColor(0);
+            wx.setHelp("A forecast chip at the top of the home screen and a card on the idle "
+                    + "screen. Choose a city to switch it on.");
+            wx.cell.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { host.showPanel(CitySearchPanel.settings(c, host)); }
+            });
+            wx.cell.setOnFocusChangeListener(chain(wx.cell.getOnFocusChangeListener(), new Runnable() {
+                public void run() { wx.setValue(Prefs.weatherCity(c) == null ? "Off" : Prefs.weatherCity(c)); }
+            }));
             final Panel.Row profiles = p.addRow("Profiles", Prefs.profiles(c).size() + "", null).opens();
             profiles.setValueColor(0);
             profiles.setHelp("Add, rename, recolour or remove profiles.");

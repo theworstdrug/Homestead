@@ -139,6 +139,19 @@ final class TopBar extends FrameLayout {
     void setWeather(String tempText, String kind) {
         weather.setText(tempText == null ? "" : tempText);
         weather.setVisibility(tempText == null ? GONE : VISIBLE);
+        weatherKind = kind;
+        paintWeatherIcon();
+    }
+
+    private String weatherKind;
+
+    private void paintWeatherIcon() {
+        if (weatherKind == null) { weather.setCompoundDrawables(null, null, null, null); return; }
+        WeatherIcons d = new WeatherIcons(weatherKind, palette.text);
+        int s = Px.of(getContext(), 22);
+        d.setBounds(0, 0, s, s);
+        weather.setCompoundDrawables(d, null, null, null);
+        weather.setCompoundDrawablePadding(Px.of(getContext(), 8));
     }
 
     void setPalette(Palette p) {
@@ -176,6 +189,7 @@ final class TopBar extends FrameLayout {
         date.setTextColor(palette.sub);
         clock.setTextColor(palette.text);
         weather.setTextColor(palette.text);
+        paintWeatherIcon();
 
         GradientDrawable a = new GradientDrawable();
         a.setShape(GradientDrawable.OVAL);

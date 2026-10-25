@@ -62,6 +62,8 @@ public final class Prefs {
     private static final String K_PROFILES_MIGRATED = "profiles_migrated";
     private static final String K_LAST_GLOW = "last_glow";
     private static final String K_IDLE_SET = "idle_screen_set";
+    private static final String K_WX_CITY = "wx_city", K_WX_LAT = "wx_lat", K_WX_LON = "wx_lon";
+    private static final String K_WX_UNITS = "wx_units", K_WX_CACHE = "wx_cache", K_WX_AT = "wx_cache_at";
     /** The owner profile's name on an install that predates profiles. */
     static final String LEGACY_OWNER = "Sinclair";
 
@@ -129,6 +131,37 @@ public final class Prefs {
     /** Replace the current profile's settings (look, its hidden tiles). */
     static void updateCurrent(Context c, Profiles.Profile p) {
         setProfiles(c, profiles(c).replace(p));
+    }
+
+    // ---------------------------------------------------------------- weather (per TV)
+
+    /** The chosen city's name, or null: weather is off until a city is chosen. */
+    static String weatherCity(Context c) { return sp(c).getString(K_WX_CITY, null); }
+    static double weatherLat(Context c) { return Double.parseDouble(sp(c).getString(K_WX_LAT, "0")); }
+    static double weatherLon(Context c) { return Double.parseDouble(sp(c).getString(K_WX_LON, "0")); }
+
+    static void setWeatherPlace(Context c, String city, double lat, double lon) {
+        sp(c).edit().putString(K_WX_CITY, city).putString(K_WX_LAT, String.valueOf(lat))
+                .putString(K_WX_LON, String.valueOf(lon)).remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    static void clearWeather(Context c) {
+        sp(c).edit().remove(K_WX_CITY).remove(K_WX_LAT).remove(K_WX_LON)
+                .remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    /** Fahrenheit unless switched to Celsius. */
+    static boolean fahrenheit(Context c) { return !"c".equals(sp(c).getString(K_WX_UNITS, "f")); }
+
+    static void setFahrenheit(Context c, boolean f) {
+        sp(c).edit().putString(K_WX_UNITS, f ? "f" : "c").remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    static String weatherCache(Context c) { return sp(c).getString(K_WX_CACHE, null); }
+    static long weatherCacheAt(Context c) { return sp(c).getLong(K_WX_AT, 0L); }
+
+    static void setWeatherCache(Context c, String json, long at) {
+        sp(c).edit().putString(K_WX_CACHE, json).putLong(K_WX_AT, at).apply();
     }
 
     /** Whether this install has made its idle screen the screensaver (done once). */

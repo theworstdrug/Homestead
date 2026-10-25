@@ -19,7 +19,7 @@ package com.homestead.launcher;
 public final class UnitTests {
     private UnitTests() { }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         try {
             T.eq(2, 1 + 1, "runner");
             SettingsTransferTest.run();
@@ -29,6 +29,8 @@ public final class UnitTests {
             ProfilesTest.run();
             FlavorTest.run();
             WaveTest.run();
+            JsonTest.run();
+            WeatherTest.run();
         } catch (Throwable t) {
             System.out.println("FAIL " + t.getMessage());
             t.printStackTrace(System.out);

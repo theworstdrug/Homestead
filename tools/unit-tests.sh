@@ -13,11 +13,13 @@ cd "$(dirname "$0")/.."
 PURE=(
   BannerColor.java
   Flavor.java
+  Json.java
   Motion.java
   Palette.java
   Profiles.java
   SettingsTransfer.java
   Wave.java
+  Weather.java
 )
 
 rm -rf build-tests

@@ -141,6 +141,16 @@ screen does not flash first, and makes Home work while Amazon's home screen is s
 To switch packages off, open **Commands for a computer** in the app: it lists exactly the
 commands still needed on your TV.
 
+## Weather
+
+Off until you choose a city: Settings → Everyone → Weather → Choose a city, type the name
+with the on-screen keyboard, and pick it from the list. A temperature chip then sits at the
+top of the home screen (press Up to reach it; Select opens the forecast), and a small
+forecast card shows on the idle screen. Forecasts come from [Open-Meteo](https://open-meteo.com),
+which needs no account or key; only the city's coordinates are sent, at most every 30
+minutes. The same page switches between °F and °C and turns the weather off again.
+[SECURITY.md](SECURITY.md) lists exactly what is sent.
+
 ## Your own background photo
 
 ### From the TV, no computer

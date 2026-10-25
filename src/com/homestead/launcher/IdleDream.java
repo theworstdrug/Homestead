@@ -43,9 +43,15 @@ public class IdleDream extends DreamService {
     /** Filled in by the weather: the frosted forecast card, bottom left. */
     FrameLayout forecastSlot;
 
+    private Palette pal;
+
     private final Runnable tick = new Runnable() {
         public void run() {
             updateClock();
+            // The forecast keeps up while the idle screen shows (at most every 30 minutes).
+            WeatherStore.refreshIfStale(IdleDream.this, new Runnable() {
+                public void run() { showForecast(); }
+            });
             handler.postDelayed(this, 60000L - System.currentTimeMillis() % 60000L + 50L);
         }
     };
@@ -57,7 +63,7 @@ public class IdleDream extends DreamService {
         setFullscreen(true);
 
         Profiles.Profile p = Prefs.current(this);
-        Palette pal = Palette.resolve(p.theme, p.accent);
+        pal = Palette.resolve(p.theme, p.accent);
         FrameLayout root = new FrameLayout(this);
         GlowBackground bg = new GlowBackground(this);
         bg.setPalette(pal);
@@ -87,6 +93,7 @@ public class IdleDream extends DreamService {
         flp.leftMargin = Px.of(this, 56);
         flp.bottomMargin = Px.of(this, 44);
         root.addView(forecastSlot, flp);
+        showForecast();
 
         setContentView(root);
         root.setAlpha(0f);
@@ -103,6 +110,13 @@ public class IdleDream extends DreamService {
     public void onDreamingStopped() {
         handler.removeCallbacks(tick);
         super.onDreamingStopped();
+    }
+
+    private void showForecast() {
+        if (forecastSlot == null) return;
+        forecastSlot.removeAllViews();
+        android.view.View card = WeatherPanel.idleCard(this, pal);
+        if (card != null) forecastSlot.addView(card);
     }
 
     private void updateClock() {

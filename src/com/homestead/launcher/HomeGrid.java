@@ -280,7 +280,7 @@ public class HomeGrid implements SettingsPanel.Host {
         topBar = new TopBar(c, new TopBar.Listener() {
             public void onTopFocus(View v) { onCellFocused(ROW_TOP, 0); }
             public void onAvatar() { showPanel(ProfilePicker.build(ctx, panelHost)); }
-            public void onWeather() { /* The forecast panel arrives with the weather task. */ }
+            public void onWeather() { showPanel(WeatherPanel.build(ctx, panelHost)); }
         });
         root.addView(topBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -407,6 +407,11 @@ public class HomeGrid implements SettingsPanel.Host {
             }
         }
         topBar.setTexts(greeting, greeting == null ? null : Flavor.LINES[flavor], date, clock);
+        Weather.Forecast f = WeatherStore.get(ctx);
+        topBar.setWeather(f == null ? null : f.now.temp + "°", f == null ? null : f.now.kind);
+        WeatherStore.refreshIfStale(ctx, new Runnable() {
+            public void run() { updateClock(); }
+        });
     }
 
     /**
