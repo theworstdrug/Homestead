@@ -62,6 +62,7 @@ public final class Prefs {
     private static final String K_PROFILES_MIGRATED = "profiles_migrated";
     private static final String K_LAST_GLOW = "last_glow";
     private static final String K_IDLE_SET = "idle_screen_set";
+    private static final String K_REPLACE_PICKER = "replace_amazon_picker";
     private static final String K_WX_CITY = "wx_city", K_WX_LAT = "wx_lat", K_WX_LON = "wx_lon";
     private static final String K_WX_UNITS = "wx_units", K_WX_CACHE = "wx_cache", K_WX_AT = "wx_cache_at";
     /** The owner profile's name on an install that predates profiles. */
@@ -162,6 +163,13 @@ public final class Prefs {
 
     static void setWeatherCache(Context c, String json, long at) {
         sp(c).edit().putString(K_WX_CACHE, json).putLong(K_WX_AT, at).apply();
+    }
+
+    /** Show Homestead's "Who's watching?" in place of Fire OS's at power-on. On by default. */
+    static boolean replaceAmazonPicker(Context c) { return sp(c).getBoolean(K_REPLACE_PICKER, true); }
+
+    static void setReplaceAmazonPicker(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_REPLACE_PICKER, v).apply();
     }
 
     /** Whether this install has made its idle screen the screensaver (done once). */

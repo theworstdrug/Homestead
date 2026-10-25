@@ -427,6 +427,12 @@ public class HomeGrid implements SettingsPanel.Host {
         if (panels.isEmpty()) takeStartFocus();
     }
 
+    /** "Who's watching?" over the home screen (at power-on, in place of Amazon's). */
+    public void showProfilePicker() {
+        closePanels();
+        showPanel(ProfilePicker.build(ctx, panelHost));
+    }
+
     /** A new flavour line next time the greeting is drawn (a fresh Home press). */
     public void newFlavor() { flavorFor = null; }
 

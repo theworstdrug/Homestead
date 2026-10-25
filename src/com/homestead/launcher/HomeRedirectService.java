@@ -54,6 +54,14 @@ public class HomeRedirectService extends AccessibilityService {
     private static final String TAG = "Homestead";
     private static final String AMAZON = "com.amazon.tv.launcher";
     private static final String SYSTEM_UI = "com.android.systemui";
+    /** Fire OS's "Who's Watching Fire TV?", shown at power-on when there are Amazon profiles. */
+    private static final String AMAZON_PICKER = "com.amazon.ftv.profilepicker";
+    /** How long after the screen comes on Amazon's picker is taken to be the power-on one. */
+    private static final long WAKE_WINDOW_MS = 120000L;
+    private long screenOnAt = SystemClock.elapsedRealtime();
+    private final android.content.BroadcastReceiver screenOn = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) { screenOnAt = SystemClock.elapsedRealtime(); }
+    };
 
     /** Ignores duplicate window events from a single transition. */
     private static final long DEBOUNCE_MS = 350L;
@@ -426,6 +434,7 @@ public class HomeRedirectService extends AccessibilityService {
             f.addDataScheme("package");
             registerReceiver(pkgs, f);
         } catch (Throwable t) { }
+        try { registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON)); } catch (Throwable t) { }
         AdbBridge.init(this);
         bindWatcher();
         scheduleBootMaintenance();
@@ -462,6 +471,7 @@ public class HomeRedirectService extends AccessibilityService {
         cancelHide();
         detach();
         try { unregisterReceiver(pkgs); } catch (Throwable t) { }
+        try { unregisterReceiver(screenOn); } catch (Throwable t) { }
         try { if (tvInputs != null) tvInputs.unregisterCallback(inputWatch); } catch (Throwable t) { }
         handler.removeCallbacks(pkgReload);
         if (watcherBound) {
@@ -720,6 +730,18 @@ public class HomeRedirectService extends AccessibilityService {
 
         if (isSettingsWindow(p, e.getClassName())) {
             enterSettings("Amazon settings in front");
+            return;
+        }
+
+        // Power-on: Amazon's profile picker gives way to Homestead's own "Who's watching?".
+        // Opened later (from Fire TV's settings) it is left alone.
+        if (AMAZON_PICKER.contentEquals(p) && Prefs.replaceAmazonPicker(this)
+                && SystemClock.elapsedRealtime() - screenOnAt < WAKE_WINDOW_MS) {
+            screenOnAt = 0L; // once per power-on
+            Log.i(TAG, "Amazon's profile picker at power-on: showing Homestead's");
+            lastShow = SystemClock.elapsedRealtime();
+            attach();
+            if (home != null) home.showProfilePicker();
             return;
         }
 

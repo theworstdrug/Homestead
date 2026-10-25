@@ -147,6 +147,17 @@ public final class SettingsPanel {
                 + "hidden (press MENU five times on the home screen to open Settings), MENU and "
                 + "long-press no longer hide tiles, and there are no update pop-ups; check for "
                 + "updates below. It does not change Debloat.");
+        final Panel.Row picker = p.addRow("Who's watching at power-on", onOff(Prefs.replaceAmazonPicker(c)), null).asSwitch();
+        picker.setHelp("When Fire TV shows its own \"Who's Watching Fire TV?\" after the TV is "
+                + "switched on, show Homestead's instead. Amazon apps stay on the Amazon profile "
+                + "used last; switch it in Fire TV's settings when needed.");
+        picker.cell.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                boolean n = !Prefs.replaceAmazonPicker(c);
+                Prefs.setReplaceAmazonPicker(c, n);
+                picker.setValue(onOff(n));
+            }
+        });
 
         boolean ready = SetupPanel.serviceEnabled(c);
         final Panel.Row setup = p.addRow("Setup", ready ? "done"
