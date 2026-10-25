@@ -257,7 +257,7 @@ public class HomeGrid implements SettingsPanel.Host {
 
         topBar = new TopBar(c, new TopBar.Listener() {
             public void onTopFocus(View v) { onCellFocused(ROW_TOP, 0); }
-            public void onAvatar() { /* The profile picker arrives with the profiles task. */ }
+            public void onAvatar() { showPanel(ProfilePicker.build(ctx, panelHost)); }
             public void onWeather() { /* The forecast panel arrives with the weather task. */ }
         });
         root.addView(topBar, new FrameLayout.LayoutParams(
@@ -384,6 +384,19 @@ public class HomeGrid implements SettingsPanel.Host {
             }
         }
         topBar.setTexts(greeting, greeting == null ? null : Flavor.LINES[flavor], date, clock);
+    }
+
+    /**
+     * Another profile is current: its look, its hidden tiles, a new greeting, and the
+     * focus back on its most-used app. The other grid catches up through syncOrder().
+     */
+    public void profileChanged() {
+        newFlavor();
+        layoutGen++;
+        applyPalette();
+        build();
+        updateClock();
+        if (panels.isEmpty()) takeStartFocus();
     }
 
     /** A new flavour line next time the greeting is drawn (a fresh Home press). */
@@ -580,6 +593,9 @@ public class HomeGrid implements SettingsPanel.Host {
         public void rebuildGrid() { grid.rebuildGrid(); }
         public void showPanel(View v) { grid.showPanel(v); }
         public void closePanel() { grid.closePanel(); }
+        public void profileChanged() { grid.profileChanged(); }
+        public void previewPalette(Palette p) { grid.previewPalette(p); }
+        public void applyPalette() { grid.applyPalette(); }
     }
 
     /** A setting changed from a panel in this grid; the other grid catches up via syncOrder(). */

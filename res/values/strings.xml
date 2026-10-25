@@ -19,6 +19,13 @@
   <string name="home_sec_apps">Your apps</string>
   <string name="home_sec_inputs_short">Inputs</string>
   <string name="home_sec_more">More</string>
+  <string name="profiles_who">Who\'s watching?</string>
+  <string name="profiles_add">Add</string>
+  <string name="profiles_name_title">Who\'s this profile for?</string>
+  <string name="profiles_color_title">Pick a colour for %1$s</string>
+  <string name="profiles_next">Next</string>
+  <string name="profiles_theme_title">And a theme</string>
+  <string name="profiles_theme_sub">It shows behind as you move. Change it any time in Settings.</string>
   <string name="home_hold_hint">Hold Select for options</string>
   <string name="home_rank_first">Your most-used app</string>
   <string name="home_rank_n">#%1$d in your apps</string>
