@@ -26,6 +26,20 @@ final class ProfilesTest {
         legacyBecomesOwnerSinclair();
         legacyPhoto();
         decodeGarbageGivesNothing();
+        nameCasing();
+        nameTooLong();
+    }
+
+    static void nameCasing() {
+        T.eq("Anna Marie", Profiles.cleanName("aNNA maRie"), "casing");
+        T.eq("Bo", Profiles.cleanName("  bo  "), "trimmed");
+        T.eq("Ann Lee", Profiles.cleanName("ann   lee"), "one space between words");
+        T.eq("", Profiles.cleanName("   "), "blank");
+        T.eq("Zoe", Profiles.cleanName("z|o,e"), "only letters and spaces survive");
+    }
+
+    static void nameTooLong() {
+        T.eq("Abcdefghijkl", Profiles.cleanName("abcdefghijklm"), "cut to 12");
     }
 
     private static Profiles.Profile kid() {

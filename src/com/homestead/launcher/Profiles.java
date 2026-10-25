@@ -122,6 +122,28 @@ final class Profiles {
     static boolean canSeeEveryone(Profile p) { return p != null && p.owner; }
 
     /**
+     * A name as the on-screen keyboard makes it: letters and single spaces only, each word
+     * capitalised, at most 12 characters. The stored format splits on | and , so nothing
+     * else may get through.
+     */
+    static String cleanName(String raw) {
+        if (raw == null) return "";
+        StringBuilder b = new StringBuilder();
+        boolean startWord = true;
+        for (int i = 0; i < raw.length() && b.length() < 12; i++) {
+            char ch = raw.charAt(i);
+            if (Character.isLetter(ch)) {
+                b.append(startWord ? Character.toUpperCase(ch) : Character.toLowerCase(ch));
+                startWord = false;
+            } else if (ch == ' ' && b.length() > 0 && !startWord) {
+                b.append(' ');
+                startWord = true;
+            }
+        }
+        return b.toString().trim();
+    }
+
+    /**
      * The first profile on an install that predates profiles, made from its old settings.
      * The greeting starts on: the new one (name and flavour line) replaces the old option.
      */
