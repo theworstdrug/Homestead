@@ -13,6 +13,7 @@
 package com.homestead.launcher;
 
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -177,7 +178,7 @@ public class HomeGrid implements SettingsPanel.Host {
                 // five presses in a row open Settings instead.
                 if (e.getKeyCode() == KeyEvent.KEYCODE_MENU && panels.isEmpty()) {
                     if (e.getAction() == KeyEvent.ACTION_UP) {
-                        if (!Prefs.simpleMode(ctx)) hideFocused();
+                        if (!Prefs.simpleMode(ctx)) openOptions();
                         else if (menuTaps.tap()) {
                             logOpen("Settings (Menu x" + MenuTaps.COUNT + ")");
                             showPanel(SettingsPanel.build(ctx, panelHost));
@@ -187,6 +188,27 @@ public class HomeGrid implements SettingsPanel.Host {
                 }
                 if (panels.isEmpty() && e.getAction() == KeyEvent.ACTION_DOWN && navigate(e.getKeyCode())) {
                     return true;
+                }
+                // Hold Select: Android marks the first key repeat after the long-press timeout
+                // with FLAG_LONG_PRESS. Acting on that here works for any remote, and the
+                // release that follows must not also open the app.
+                if (isSelect(e.getKeyCode())) {
+                    if (e.getAction() == KeyEvent.ACTION_DOWN && panels.isEmpty()) {
+                        if (e.getRepeatCount() == 0) {
+                            swallowSelectUp = false;
+                            startHoldBar();
+                        } else if (e.isLongPress() && openOptions()) {
+                            swallowSelectUp = true;
+                            return true;
+                        }
+                        if (e.getRepeatCount() > 0) return true;
+                    } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                        stopHoldBar();
+                        if (swallowSelectUp) {
+                            swallowSelectUp = false;
+                            return true;
+                        }
+                    }
                 }
                 return super.dispatchKeyEvent(e);
             }
@@ -217,7 +239,7 @@ public class HomeGrid implements SettingsPanel.Host {
         appRow = new AppRow(c, new AppRow.Listener() {
             public void onFocus(int i) { onCellFocused(ROW_APPS, i); }
             public void onClick(int i) { pick(apps, i); }
-            public boolean onLongPress(int i) { return !Prefs.simpleMode(ctx) && hideFocused(); }
+            public boolean onLongPress(int i) { return openOptions(); }
         });
         column.addView(appRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, AppRow.HEIGHT)));
@@ -243,7 +265,7 @@ public class HomeGrid implements SettingsPanel.Host {
         moreRow = new PillRow(c, PillRow.TILES, new AppRow.Listener() {
             public void onFocus(int i) { onCellFocused(ROW_MORE, i); }
             public void onClick(int i) { pick(more, i); }
-            public boolean onLongPress(int i) { return !Prefs.simpleMode(ctx) && hideFocused(); }
+            public boolean onLongPress(int i) { return openOptions(); }
         });
         column.addView(moreRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, 110)));
@@ -446,22 +468,114 @@ public class HomeGrid implements SettingsPanel.Host {
      * @return true if something was hidden.
      */
     public boolean hideFocused() {
-        if (focusedKey == null) return false;
-        AppModel.Item target = null;
+        AppModel.Item it = focusedItem();
+        return it != null && hide(it, false);
+    }
+
+    /** The item with the focus, or null (top bar, nothing focused). */
+    private AppModel.Item focusedItem() {
+        if (focusedKey == null) return null;
         List<AppModel.Item> all = AppModel.allItems();
         for (int i = 0; i < all.size(); i++) {
-            if (focusedKey.equals(all.get(i).key())) { target = all.get(i); break; }
+            if (focusedKey.equals(all.get(i).key())) return all.get(i);
         }
-        if (target == null) return false;
-        // Settings and TV Health stay reachable so hidden tiles can always be restored.
-        if (target.type == AppModel.TYPE_SETTINGS || target.type == AppModel.TYPE_HEALTH) {
-            return false;
+        return null;
+    }
+
+    private static int indexOfKey(List<AppModel.Item> items, String key) {
+        for (int i = 0; i < items.size(); i++) if (items.get(i).key().equals(key)) return i;
+        return -1;
+    }
+
+    /** Settings and TV Health stay reachable so hidden tiles can always be restored. */
+    private static boolean hideable(AppModel.Item it) {
+        return it != null && it.type != AppModel.TYPE_SETTINGS && it.type != AppModel.TYPE_HEALTH;
+    }
+
+    /** Hold Select or Menu: the options card for the focused tile. Not in Simple mode. */
+    private boolean openOptions() {
+        stopHoldBar();
+        AppModel.Item it = focusedItem();
+        if (Prefs.simpleMode(ctx) || !hideable(it) || !panels.isEmpty()) return false;
+        showPanel(OptionsMenu.build(ctx, it, new OptionsMenu.Actions() {
+            public void open(AppModel.Item item) {
+                if (listener != null) listener.onPick(item);
+                act(item);
+            }
+            public void hide(AppModel.Item item, boolean everyone) { HomeGrid.this.hide(item, everyone); }
+            public void close() { closePanel(); }
+        }));
+        return true;
+    }
+
+    /**
+     * Hide a tile for this profile, or for everyone (the owner only). The focus moves to
+     * the tile before it in the same row, or the first one left.
+     */
+    private boolean hide(AppModel.Item it, boolean everyone) {
+        if (!hideable(it)) return false;
+        Profiles.Profile me = Prefs.current(ctx);
+        if (everyone && !Profiles.canSeeEveryone(me)) return false;
+        // By key: the model may have been reloaded since the menu opened, so the item can be
+        // a different object for the same tile.
+        List<AppModel.Item> row = indexOfKey(apps, it.key()) >= 0 ? apps
+                : indexOfKey(inputs, it.key()) >= 0 ? inputs : more;
+        int at = indexOfKey(row, it.key());
+        String prev = at > 0 ? row.get(at - 1).key() : (row.size() > 1 ? row.get(1).key() : null);
+        if (everyone) {
+            Prefs.setHidden(ctx, it.key(), true);
+        } else {
+            Profiles.Profile e = me.copy();
+            e.hidden.add(it.key());
+            Prefs.updateCurrent(ctx, e);
         }
-        Prefs.setHidden(ctx, target.key(), true);
-        Toasts.show(ctx, root, target.label + " hidden  ·  Restore it in Settings");
+        Toasts.show(ctx, root, ctx.getString(everyone ? R.string.options_hidden_all : R.string.options_hidden_for,
+                it.label, me.name));
         layoutGen++;
         rebuild();
+        if (prev != null) selectKey(prev);
         return true;
+    }
+
+    // ---- the hold bar: fills along the bottom of the tile while Select is held
+
+    /** The Select release after a hold opened the options: it must not also act. */
+    private boolean swallowSelectUp;
+    private ValueAnimator holdAnim;
+    private android.graphics.drawable.ColorDrawable holdDrawable;
+    private View holdOn;
+
+    private static boolean isSelect(int code) {
+        return code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER;
+    }
+
+    private void startHoldBar() {
+        stopHoldBar();
+        final View cell = focusedKey == null ? null : cellsByKey.get(focusedKey);
+        if (cell == null || Prefs.simpleMode(ctx) || !hideable(focusedItem())) return;
+        holdOn = cell;
+        holdDrawable = new android.graphics.drawable.ColorDrawable(palette.ring);
+        final int h = Math.max(2, Math.round(Px.f(ctx, 5) / Math.max(1f, cell.getScaleY())));
+        holdDrawable.setBounds(0, cell.getHeight() - h, 0, cell.getHeight());
+        cell.getOverlay().add(holdDrawable);
+        holdAnim = ValueAnimator.ofInt(0, cell.getWidth());
+        holdAnim.setDuration(android.view.ViewConfiguration.getLongPressTimeout());
+        holdAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            public void onAnimationUpdate(ValueAnimator a) {
+                if (holdDrawable != null) {
+                    holdDrawable.setBounds(0, cell.getHeight() - h, (Integer) a.getAnimatedValue(), cell.getHeight());
+                }
+            }
+        });
+        holdAnim.start();
+    }
+
+    private void stopHoldBar() {
+        if (holdAnim != null) holdAnim.cancel();
+        if (holdOn != null && holdDrawable != null) holdOn.getOverlay().remove(holdDrawable);
+        holdAnim = null;
+        holdDrawable = null;
+        holdOn = null;
     }
 
     public void showPanel(final View v) {
