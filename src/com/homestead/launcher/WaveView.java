@@ -15,8 +15,6 @@ package com.homestead.launcher;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffXfermode;
 import android.os.SystemClock;
 import android.view.View;
 
@@ -24,8 +22,8 @@ import java.util.Random;
 
 /**
  * The idle screen's light: Wave's two ribbons of fine lines, a soft glow under each, and
- * faint sparkles drifting along the first, redrawn every frame. Light themes draw dark ink
- * with normal blending; dark themes add light, as out-of-focus light does.
+ * faint sparkles drifting along the first, redrawn every frame. Light themes draw dark ink,
+ * dark themes light.
  */
 final class WaveView extends View {
     private static final float STEP = 16f;
@@ -67,10 +65,6 @@ final class WaveView extends View {
     void setPalette(Palette p) {
         ink = p.waveInk & 0x00FFFFFF;
         k = p.darkInk ? 0.75f : 1f;
-        PorterDuffXfermode mode = null;
-        line.setXfermode(mode);
-        glow.setXfermode(mode);
-        spark.setXfermode(mode);
         invalidate();
     }
 
@@ -91,10 +85,11 @@ final class WaveView extends View {
         float t = (SystemClock.uptimeMillis() - start) / 1000f;
         float s = w / 1280f;
         int design = Math.round(h / s);
+        boolean glowDue = frame % 3 == 0 || glowBmp == null;
         for (int sheet = 0; sheet < Wave.SHEETS; sheet++) {
             // The glow under the ribbon: wide soft strokes along its centre line.
-            // The glow moves slowly; every other frame is enough, and halves its cost.
-            if ((frame & 1) == 0 || glowBmp == null) glowLayer(sheet, t, design, sheet == 0);
+            // The glow moves slowly; every third frame is enough.
+            if (glowDue) glowLayer(sheet, t, design, sheet == 0);
             int n = Wave.lines(sheet);
             for (int j = 0; j < n; j++) {
                 float u = j / (float) (n - 1) - 0.5f;
@@ -103,6 +98,7 @@ final class WaveView extends View {
                 c.drawLines(seg, 0, segLen, line);
             }
         }
+        if (glowDue) blurGlow();
         if (glowBmp != null) c.drawBitmap(glowBmp, null, new android.graphics.Rect(0, 0, (int) w, (int) h), glowBlit);
         for (int i = 0; i < SPARKS; i++) {
             float x = ((sx[i] + t * sp[i]) % 1340f) - 20f;
@@ -119,17 +115,17 @@ final class WaveView extends View {
     }
 
     /**
-     * The soft light under each ribbon, drawn every frame into a bitmap an eighth of the
-     * screen's size and stretched over it: a few strokes on a tiny canvas cost almost
-     * nothing, and the stretch blurs them, which is the look wanted.
+     * The soft light under each ribbon: its centre line drawn as a wide stroke into a small
+     * image (240x135), then blurred and stretched over the screen. Blurred first, it has no
+     * edges, so stretching it stays smooth; drawn sharp and stretched, it showed blocks.
      */
     private void glowLayer(int sheet, float t, int design, boolean clear) {
         if (glowBmp == null) {
-            glowBmp = android.graphics.Bitmap.createBitmap(160, 90, android.graphics.Bitmap.Config.ARGB_8888);
+            glowBmp = android.graphics.Bitmap.createBitmap(GW, GH, android.graphics.Bitmap.Config.ARGB_8888);
             glowCanvas = new Canvas(glowBmp);
         }
         if (clear) glowBmp.eraseColor(0);
-        float gs = 160f / 1280f;
+        float gs = GW / 1280f;
         segLen = 0;
         float px = -40, py = Wave.y(sheet, px, 0f, t, design) * gs;
         for (float x = -40 + STEP * 2; x <= 1320; x += STEP * 2) {
@@ -137,16 +133,30 @@ final class WaveView extends View {
             seg[segLen++] = px * gs; seg[segLen++] = py; seg[segLen++] = x * gs; seg[segLen++] = y;
             px = x; py = y;
         }
-        for (int pass = 0; pass < 3; pass++) {
-            glow.setStrokeWidth((80 - pass * 26) * gs);
-            glow.setColor(argb(0.05f * k, ink));
-            glowCanvas.drawLines(seg, 0, segLen, glow);
-        }
+        // Shape only (opaque white); blurGlow() gives it the ink colour and strength.
+        glow.setStrokeWidth(46 * gs);
+        glow.setColor(0xFFFFFFFF);
+        glowCanvas.drawLines(seg, 0, segLen, glow);
     }
 
+    /** Blur the drawn shape's alpha and colour it with the ink at the glow's strength. */
+    private void blurGlow() {
+        if (glowBmp == null) return;
+        glowBmp.getPixels(glowPx, 0, GW, 0, 0, GW, GH);
+        for (int i = 0; i < glowPx.length; i++) glowA[i] = glowPx[i] >>> 24;
+        Blur.box(glowA, GW, GH, 7, glowTmp);
+        int strength = Math.round(255 * 0.35f * k);
+        for (int i = 0; i < glowPx.length; i++) {
+            glowPx[i] = ((glowA[i] * strength / 255) << 24) | ink;
+        }
+        glowBmp.setPixels(glowPx, 0, GW, 0, 0, GW, GH);
+    }
+
+    private static final int GW = 240, GH = 135;
+    private final int[] glowPx = new int[GW * GH], glowA = new int[GW * GH], glowTmp = new int[GW * GH];
     private android.graphics.Bitmap glowBmp;
     private Canvas glowCanvas;
-    private final Paint glowBlit = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint glowBlit = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
 
     /** One line of a ribbon as segments, from just off the left edge to just off the right. */
     private void build(int sheet, float u, float t, float s, int design) {

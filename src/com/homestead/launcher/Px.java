@@ -31,6 +31,19 @@ final class Px {
         return designPx * c.getResources().getDisplayMetrics().widthPixels / 1280f;
     }
 
+    /**
+     * Turn off Android's own focus highlight (a grey box, from Android 8) under v and every
+     * view in it: Homestead draws its own focus, and the box showed behind avatars and keys.
+     */
+    static void noFocusHighlight(android.view.View v) {
+        if (android.os.Build.VERSION.SDK_INT < 26 || v == null) return;
+        v.setDefaultFocusHighlightEnabled(false);
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) noFocusHighlight(g.getChildAt(i));
+        }
+    }
+
     /** Motion's ease-out for the view animators. */
     static final TimeInterpolator EASE = new TimeInterpolator() {
         public float getInterpolation(float t) { return Motion.easeOut(t); }

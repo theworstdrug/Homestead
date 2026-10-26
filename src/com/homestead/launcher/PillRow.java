@@ -62,6 +62,23 @@ final class PillRow extends FrameLayout {
         addView(track, new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
+    /**
+     * The track is as long as all its cells, however wide the screen: measured at most the
+     * row's width, a row with more cells than fit could only slide 64 px, and the focus
+     * went off the edge.
+     */
+    @Override
+    protected void measureChildWithMargins(android.view.View child, int widthSpec, int widthUsed,
+                                           int heightSpec, int heightUsed) {
+        if (child == track) {
+            child.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                    getChildMeasureSpec(heightSpec, getPaddingTop() + getPaddingBottom() + heightUsed,
+                            child.getLayoutParams().height));
+            return;
+        }
+        super.measureChildWithMargins(child, widthSpec, widthUsed, heightSpec, heightUsed);
+    }
+
     void setItems(List<AppModel.Item> list, Palette p) {
         items = list;
         palette = p;

@@ -29,6 +29,7 @@ public final class UnitTests {
             ProfilesTest.run();
             FlavorTest.run();
             WaveTest.run();
+            BlurTest.run();
             JsonTest.run();
             WeatherTest.run();
         } catch (Throwable t) {

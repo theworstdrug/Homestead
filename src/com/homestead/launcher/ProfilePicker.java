@@ -36,6 +36,9 @@ final class ProfilePicker {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
+        // The focused avatar grows past its row; nothing above it may clip that.
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
         col.addView(title(c, pal, c.getString(R.string.profiles_who)), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 

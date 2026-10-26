@@ -14,20 +14,10 @@ package com.homestead.launcher;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.Settings;
 import android.service.dreams.DreamService;
 import android.util.Log;
-import android.util.TypedValue;
-import android.view.Gravity;
-import android.view.ViewGroup;
-import android.widget.FrameLayout;
-import android.widget.TextView;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 /**
  * Homestead's idle screen, in place of Fire OS's screensaver: the current profile's theme
@@ -38,110 +28,12 @@ public class IdleDream extends DreamService {
     static final String COMPONENT = "com.homestead.launcher/.IdleDream";
     private static final String TAG = "Homestead";
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView clock;
-    /** Filled in by the weather: the frosted forecast card, bottom left. */
-    FrameLayout forecastSlot;
-
-    private Palette pal;
-    private final java.util.Random random = new java.util.Random();
-    /** Every few minutes the clock and the card glide a little, so nothing stays on one spot. */
-    private static final long DRIFT_MS = 3L * 60L * 1000L;
-    private static final float DRIFT_X = 28f, DRIFT_Y = 18f;
-
-    private final Runnable drift = new Runnable() {
-        public void run() {
-            for (android.view.View v : new android.view.View[]{clock, forecastSlot}) {
-                if (v == null) continue;
-                v.animate().translationX(Px.f(IdleDream.this, (random.nextFloat() * 2 - 1) * DRIFT_X))
-                        .translationY(Px.f(IdleDream.this, (random.nextFloat() * 2 - 1) * DRIFT_Y))
-                        .setDuration(4000).start();
-            }
-            handler.postDelayed(this, DRIFT_MS);
-        }
-    };
-
-    private final Runnable tick = new Runnable() {
-        public void run() {
-            updateClock();
-            // The forecast keeps up while the idle screen shows (at most every 30 minutes).
-            WeatherStore.refreshIfStale(IdleDream.this, new Runnable() {
-                public void run() { showForecast(); }
-            });
-            handler.postDelayed(this, 60000L - System.currentTimeMillis() % 60000L + 50L);
-        }
-    };
-
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
         setInteractive(false);
         setFullscreen(true);
-
-        Profiles.Profile p = Prefs.current(this);
-        pal = Palette.resolve(p.theme, p.accent);
-        FrameLayout root = new FrameLayout(this);
-        GlowBackground bg = new GlowBackground(this);
-        bg.setPalette(pal);
-        bg.setGlow(p.glow ? Prefs.lastGlow(this) : 0, false);
-        bg.setIdleDim(true);
-        root.setBackground(bg);
-
-        WaveView wave = new WaveView(this);
-        wave.setPalette(pal);
-        root.addView(wave, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        clock = new TextView(this);
-        clock.setTextColor(pal.text);
-        clock.setAlpha(0.8f);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, Px.f(this, 54));
-        clock.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.RIGHT);
-        clp.rightMargin = Px.of(this, 56);
-        clp.bottomMargin = Px.of(this, 44);
-        root.addView(clock, clp);
-
-        forecastSlot = new FrameLayout(this);
-        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT);
-        flp.leftMargin = Px.of(this, 56);
-        flp.bottomMargin = Px.of(this, 44);
-        root.addView(forecastSlot, flp);
-        showForecast();
-
-        setContentView(root);
-        root.setAlpha(0f);
-        root.animate().alpha(1f).setDuration(1800).start();
-    }
-
-    @Override
-    public void onDreamingStarted() {
-        super.onDreamingStarted();
-        handler.post(tick);
-        handler.postDelayed(drift, DRIFT_MS);
-    }
-
-    @Override
-    public void onDreamingStopped() {
-        handler.removeCallbacks(tick);
-        handler.removeCallbacks(drift);
-        super.onDreamingStopped();
-    }
-
-    private void showForecast() {
-        if (forecastSlot == null) return;
-        forecastSlot.removeAllViews();
-        android.view.View card = WeatherPanel.idleCard(this, pal);
-        if (card != null) forecastSlot.addView(card);
-    }
-
-    private void updateClock() {
-        if (clock == null) return;
-        clock.setVisibility(Prefs.clockMode(this) == Prefs.CLOCK_OFF ? android.view.View.GONE : android.view.View.VISIBLE);
-        boolean h12 = Prefs.clockMode(this) == Prefs.CLOCK_12H;
-        clock.setText(new SimpleDateFormat(h12 ? "h:mm" : "HH:mm", Locale.getDefault()).format(new Date()));
+        setContentView(new IdleScene(this));
     }
 
     /**

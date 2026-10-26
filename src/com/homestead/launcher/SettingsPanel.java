@@ -125,6 +125,13 @@ public final class SettingsPanel {
         look.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { host.showPanel(buildLook(c, host, summaries)); }
         });
+        p.addRow("Preview the idle screen", "", new Runnable() {
+            public void run() {
+                host.closePanel();
+                host.showPanel(IdleScene.preview(c, host));
+            }
+        }).setHelp("What the TV shows after it has been left alone, in place of Fire TV's "
+                + "screensaver. Any button closes it.");
 
         if (!owner) {
             p.addRow("Close", "", new Runnable() {

@@ -608,6 +608,7 @@ public class HomeGrid implements SettingsPanel.Host {
         if (under != null) under.setVisibility(View.INVISIBLE);
         root.addView(v, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        Px.noFocusHighlight(v);
         panels.add(v);
         panelFocus.add(null);
         v.post(new Runnable() { public void run() { v.requestFocus(); } });
@@ -952,6 +953,7 @@ public class HomeGrid implements SettingsPanel.Host {
         moreRow.setVisibility(m.isEmpty() ? View.GONE : View.VISIBLE);
         appRow.select(0, false, false);
         updateInfo(0);
+        Px.noFocusHighlight(root);
     }
 
     // ---------------------------------------------------------------- focus
@@ -979,7 +981,8 @@ public class HomeGrid implements SettingsPanel.Host {
         if (row == ROW_MORE) moreRow.select(index, true, animate);
         else if (was == ROW_MORE) moreRow.select(moreRow.remembered(), false, animate);
         info.animate().alpha(row == ROW_APPS || row == ROW_TOP ? 1f : 0.35f).setDuration(Motion.FOCUS_MS).start();
-        boolean below = row == ROW_INPUTS || row == ROW_MORE;
+        // Only when the rows move up into its space: with no apps row there is nothing to hide for.
+        boolean below = (row == ROW_INPUTS || row == ROW_MORE) && rowScroll(row) > 0;
         topBar.setHeadHidden(below, animate);
         topFade.animate().cancel();
         if (animate) topFade.animate().alpha(below ? 1f : 0f).setDuration(Motion.ROWS_MS).start();
@@ -1022,15 +1025,19 @@ public class HomeGrid implements SettingsPanel.Host {
         }
     }
 
-    /** Where the page sits for each row: the greeting's space is reused below the apps. */
-    private void scrollToRow(int row, boolean animate) {
+    /** How far the page scrolls for a row: the greeting's space is reused below the apps. */
+    private int rowScroll(int row) {
         int y = 0;
         if (row == ROW_INPUTS && inputsLabel.getVisibility() == View.VISIBLE) {
             y = inputsLabel.getTop() - Px.of(ctx, 261);
         } else if (row == ROW_MORE && moreLabel.getVisibility() == View.VISIBLE) {
             y = moreLabel.getTop() - Px.of(ctx, 288);
         }
-        y = Math.max(0, y);
+        return Math.max(0, y);
+    }
+
+    private void scrollToRow(int row, boolean animate) {
+        int y = rowScroll(row);
         scrollAnim.cancel();
         if (animate) {
             scrollAnim.setIntValues(scroll.getScrollY(), y);

@@ -55,6 +55,9 @@ final class ProfileCreator {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
+        // Focused keys, colours and cards grow past their rows; nothing may clip them.
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
         dots = new LinearLayout(c);
         dots.setOrientation(LinearLayout.HORIZONTAL);
         col.addView(dots, new LinearLayout.LayoutParams(
@@ -83,6 +86,7 @@ final class ProfileCreator {
         page.removeAllViews();
         View v = s == NAME ? namePage() : s == COLOR ? colorPage() : themePage();
         page.addView(v);
+        Px.noFocusHighlight(v);
         v.setAlpha(0f);
         v.setTranslationX(Px.f(c, 24));
         v.animate().alpha(1f).translationX(0f).setDuration(320).setInterpolator(Px.IOS).start();
