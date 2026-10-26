@@ -13,4 +13,26 @@
   <string name="home_greet_morning">Good morning</string>
   <string name="home_greet_afternoon">Good afternoon</string>
   <string name="home_greet_evening">Good evening</string>
+  <string name="home_greet_morning_name">Good morning, %1$s</string>
+  <string name="home_greet_afternoon_name">Good afternoon, %1$s</string>
+  <string name="home_greet_evening_name">Good evening, %1$s</string>
+  <string name="home_sec_apps">Your apps</string>
+  <string name="home_sec_inputs_short">Inputs</string>
+  <string name="home_sec_more">More</string>
+  <string name="profiles_who">Who\'s watching?</string>
+  <string name="profiles_add">Add</string>
+  <string name="profiles_name_title">Who\'s this profile for?</string>
+  <string name="profiles_color_title">Pick a colour for %1$s</string>
+  <string name="profiles_next">Next</string>
+  <string name="profiles_theme_title">And a theme</string>
+  <string name="profiles_theme_sub">It shows behind as you move. Change it any time in Settings.</string>
+  <string name="options_open">Open</string>
+  <string name="options_hide_for">Hide for %1$s</string>
+  <string name="options_hide_all">Hide for everyone</string>
+  <string name="options_cancel">Cancel</string>
+  <string name="options_hidden_for">%1$s hidden for %2$s  ·  Restore it in Settings</string>
+  <string name="options_hidden_all">%1$s hidden for everyone  ·  Restore it in Settings</string>
+  <string name="home_hold_hint">Hold Select for options</string>
+  <string name="home_rank_first">Your most-used app</string>
+  <string name="home_rank_n">#%1$d in your apps</string>
 </resources>

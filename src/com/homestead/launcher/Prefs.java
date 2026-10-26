@@ -57,6 +57,16 @@ public final class Prefs {
     private static final String K_DATE = "date_format";
     private static final String K_NONTV_WIDE = "nontv_wide";
     private static final String K_FIRE_ICONS = "fire_os_icons";
+    private static final String K_PROFILES = "profiles";
+    private static final String K_PROFILE_CURRENT = "profile_current";
+    private static final String K_PROFILES_MIGRATED = "profiles_migrated";
+    private static final String K_LAST_GLOW = "last_glow";
+    private static final String K_IDLE_SET = "idle_screen_set";
+    private static final String K_REPLACE_PICKER = "replace_amazon_picker";
+    private static final String K_WX_CITY = "wx_city", K_WX_LAT = "wx_lat", K_WX_LON = "wx_lon";
+    private static final String K_WX_UNITS = "wx_units", K_WX_CACHE = "wx_cache", K_WX_AT = "wx_cache_at";
+    /** The owner profile's name on an install that predates profiles. */
+    static final String LEGACY_OWNER = Profiles.DEFAULT_OWNER_NAME;
 
     public static final int SORT_LAST_USED = 0;
     public static final int SORT_ALPHA = 1;
@@ -73,11 +83,113 @@ public final class Prefs {
 
     private Prefs() { }
 
+    /** The settings file itself, for MigrateProvider's import and export. */
+    static SharedPreferences store(Context c) { return sp(c); }
+
     private static SharedPreferences sp(Context c) {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
 
+    // ---------------------------------------------------------------- profiles
+
+    /**
+     * The profiles. The first call on an install that predates them makes the owner
+     * profile from the old look settings; the old hidden set stays where it is and now
+     * means "hidden for everyone".
+     */
+    static synchronized Profiles profiles(Context c) {
+        SharedPreferences sp = sp(c);
+        Profiles ps = Profiles.decode(sp.getString(K_PROFILES, null));
+        if (ps.size() == 0 || ps.owner() == null) {
+            ps = Profiles.fromLegacy(LEGACY_OWNER, sp.getString(K_BACKGROUND_ID, null));
+            sp.edit().putString(K_PROFILES, ps.encode()).putBoolean(K_PROFILES_MIGRATED, true)
+                    .putString(K_PROFILE_CURRENT, ps.owner().id).apply();
+        }
+        return ps;
+    }
+
+    static synchronized void setProfiles(Context c, Profiles ps) {
+        sp(c).edit().putString(K_PROFILES, ps.encode()).apply();
+    }
+
+    /** The profile in use; the owner if the remembered one has gone. */
+    static Profiles.Profile current(Context c) {
+        Profiles ps = profiles(c);
+        Profiles.Profile p = ps.byId(sp(c).getString(K_PROFILE_CURRENT, ""));
+        return p != null ? p : ps.owner();
+    }
+
+    /** The current profile's colours. */
+    static Palette palette(Context c) {
+        Profiles.Profile p = current(c);
+        return Palette.resolve(p.theme, p.accent);
+    }
+
+    static void setCurrent(Context c, String id) {
+        sp(c).edit().putString(K_PROFILE_CURRENT, id).apply();
+    }
+
+    /** Replace the current profile's settings (look, its hidden tiles). */
+    static void updateCurrent(Context c, Profiles.Profile p) {
+        setProfiles(c, profiles(c).replace(p));
+    }
+
+    // ---------------------------------------------------------------- weather (per TV)
+
+    /** The chosen city's name, or null: weather is off until a city is chosen. */
+    static String weatherCity(Context c) { return sp(c).getString(K_WX_CITY, null); }
+    static double weatherLat(Context c) { return number(sp(c).getString(K_WX_LAT, "0")); }
+    static double weatherLon(Context c) { return number(sp(c).getString(K_WX_LON, "0")); }
+
+    private static double number(String s) {
+        try { return Double.parseDouble(s); } catch (RuntimeException e) { return 0; }
+    }
+
+    static void setWeatherPlace(Context c, String city, double lat, double lon) {
+        sp(c).edit().putString(K_WX_CITY, city).putString(K_WX_LAT, String.valueOf(lat))
+                .putString(K_WX_LON, String.valueOf(lon)).remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    static void clearWeather(Context c) {
+        sp(c).edit().remove(K_WX_CITY).remove(K_WX_LAT).remove(K_WX_LON)
+                .remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    /** Fahrenheit unless switched to Celsius. */
+    static boolean fahrenheit(Context c) { return !"c".equals(sp(c).getString(K_WX_UNITS, "f")); }
+
+    static void setFahrenheit(Context c, boolean f) {
+        sp(c).edit().putString(K_WX_UNITS, f ? "f" : "c").remove(K_WX_CACHE).remove(K_WX_AT).apply();
+    }
+
+    static String weatherCache(Context c) { return sp(c).getString(K_WX_CACHE, null); }
+    static long weatherCacheAt(Context c) { return sp(c).getLong(K_WX_AT, 0L); }
+
+    static void setWeatherCache(Context c, String json, long at) {
+        sp(c).edit().putString(K_WX_CACHE, json).putLong(K_WX_AT, at).apply();
+    }
+
+    /** Show Homestead's "Who's watching?" in place of Fire OS's at power-on. On by default. */
+    static boolean replaceAmazonPicker(Context c) { return sp(c).getBoolean(K_REPLACE_PICKER, true); }
+
+    static void setReplaceAmazonPicker(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_REPLACE_PICKER, v).apply();
+    }
+
+    /** Whether this install has made its idle screen the screensaver (done once). */
+    static boolean idleScreenSet(Context c) { return sp(c).getBoolean(K_IDLE_SET, false); }
+
+    static void setIdleScreenSet(Context c) { sp(c).edit().putBoolean(K_IDLE_SET, true).apply(); }
+
+    /** The last app colour the home screen glowed with, for the idle screen. */
+    static int lastGlow(Context c) { return sp(c).getInt(K_LAST_GLOW, 0); }
+
+    static void setLastGlow(Context c, int color) {
+        if (lastGlow(c) != color) sp(c).edit().putInt(K_LAST_GLOW, color).apply();
+    }
+
     // ---------------------------------------------------------------- hidden tiles
+    // K_HIDDEN is the set hidden for everyone; each profile adds its own on top.
 
     /** Returns a copy: a Set from SharedPreferences must not be mutated. */
     public static Set<String> hidden(Context c) {

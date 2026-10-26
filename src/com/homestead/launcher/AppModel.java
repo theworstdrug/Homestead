@@ -94,6 +94,8 @@ public final class AppModel {
         public int glyph;
         /** Inputs: the TV reports a device on this input. */
         public boolean connected;
+        /** The app's colour for the background glow (BannerColor); 0 if it has none. */
+        public int glow;
 
         /** Stable across a re-sort; the handoff carries this, never an index. */
         public String key() {
@@ -124,9 +126,10 @@ public final class AppModel {
         return false;
     }
 
-    /** What the grid should draw: everything except tiles the user hid. */
+    /** What the grid should draw: everything except tiles hidden for everyone or for this profile. */
     public static List<Item> visibleItems(Context c) {
         java.util.Set<String> hidden = Prefs.hidden(c);
+        hidden.addAll(Prefs.current(c).hidden);
         List<Item> out = new ArrayList<Item>(ITEMS.size());
         for (int i = 0; i < ITEMS.size(); i++) {
             Item it = ITEMS.get(i);
@@ -147,12 +150,10 @@ public final class AppModel {
 
     private static void metrics(Context c) {
         if (cellW > 0) return;
-        DisplayMetrics dm = c.getResources().getDisplayMetrics();
-        int margin = dp(c, MARGIN_DP);
-        int gap = dp(c, GAP_DP);
-        int cols = Prefs.columns(c);
-        cellW = (dm.widthPixels - 2 * margin - (cols - 1) * gap) / cols;
-        if (cellW <= 0) cellW = dp(c, 136);
+        // Banners are decoded at the size of the focused (large) tile in the apps row, so
+        // they stay sharp when a tile grows; unfocused tiles draw them scaled down.
+        cellW = Px.of(c, AppRow.FOCUS_W);
+        if (cellW <= 0) cellW = dp(c, 200);
         cellH = cellW * 9 / 16;
     }
 
@@ -229,7 +230,7 @@ public final class AppModel {
 
                 Drawable raw = null;
                 try { raw = ai.loadBanner(pm); } catch (Throwable t) { raw = null; }
-                a.banner = toBitmap(c, raw, cellW, cellH, true);
+                a.banner = toBitmap(c, raw, cellW, cellH, false);
                 raw = null;
                 a.tvApp = (ci == 0) || a.banner != null;
                 // Icons are only shown when there is no banner, so only decode them then.
@@ -240,6 +241,7 @@ public final class AppModel {
                     else a.icon = toBitmap(c, ic, ICON_PX, ICON_PX, false);
                     ic = null;
                 }
+                a.glow = glowOf(a.banner != null ? a.banner : a.icon);
                 ITEMS.add(a);
             }
         }
@@ -442,6 +444,21 @@ public final class AppModel {
      * Redraw into a display-sized bitmap so full-size art is not retained. Banners are
      * rounded here, once, rather than clipped on every frame.
      */
+    /** The dominant colour of a banner or icon, sampled from a small copy; 0 if colourless. */
+    static int glowOf(Bitmap b) {
+        if (b == null) return 0;
+        try {
+            int w = Math.min(64, b.getWidth()), h = Math.max(1, Math.round(w * b.getHeight() / (float) b.getWidth()));
+            Bitmap small = Bitmap.createScaledBitmap(b, w, h, true);
+            int[] px = new int[w * h];
+            small.getPixels(px, 0, w, 0, 0, w, h);
+            if (small != b) small.recycle();
+            return BannerColor.of(px, 0);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     private static Bitmap toBitmap(Context c, Drawable src, int maxW, int maxH, boolean round) {
         if (src == null) return null;
         try {

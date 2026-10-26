@@ -31,6 +31,12 @@ public final class SettingsPanel {
         void rebuildGrid();
         void showPanel(View v);
         void closePanel();
+        /** The current profile changed: its look, hidden tiles and greeting. */
+        void profileChanged();
+        /** Paint a palette everywhere without saving it (a preview); photo: over the photo. */
+        void previewPalette(Palette p, boolean photo);
+        /** Back to the current profile's saved look. */
+        void applyPalette();
     }
 
     private SettingsPanel() { }
@@ -42,19 +48,76 @@ public final class SettingsPanel {
     public static View build(final Context c, final Host host) {
         final Panel p = new Panel(c, "Settings",
                 "Homestead " + UpdateChecker.installedVersionName(c), Panel.SHEET);
+        final Profiles.Profile me = Prefs.current(c);
+        final boolean owner = Profiles.canSeeEveryone(me);
 
-        final Panel.Row home = p.addRow("Home screen", homeSummary(c), null).opens();
-        home.setValueColor(0xFF8FA3B8);
-        home.setHelp("Hidden tiles, sorting, grid columns, the clock and the sections.");
-        final Panel.Row look = p.addRow("Background", Backgrounds.label(c), null).opens();
-        look.setValueColor(0xFF8FA3B8);
-        look.setHelp("The colour or photo behind the home screen.");
-        // Summaries catch up when a sub-page changes something.
+        // ---- this profile's own look
+        p.addHeader("For " + me.name);
+        final Panel.Row theme = p.addRow("Theme", themeLabel(c), null).opens();
+        theme.setValueColor(0);
+        theme.setHelp("Midnight, OLED, Frost or Ember, an accent colour, or the photo. The "
+                + "home screen behind shows each one as you move.");
+        theme.cell.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { host.showPanel(ThemePanel.build(c, host)); }
+        });
+        theme.cell.setOnFocusChangeListener(chain(theme.cell.getOnFocusChangeListener(),
+                new Runnable() { public void run() { theme.setValue(themeLabel(c)); } }));
+        profileSwitch(c, host, p, "Glow follows the app", PROFILE_GLOW,
+                "The soft light behind the home screen takes the colour of the app you are on.");
+        profileSwitch(c, host, p, "Rank numbers", PROFILE_RANKS,
+                "Large numbers beside your apps, most-used first. Shown when apps are sorted by "
+                + "last used.");
+        profileSwitch(c, host, p, "Greeting", PROFILE_GREETING,
+                "\"Good evening\" with your name and a line under it, at the top left.");
+        final Panel.Row mine = p.addRow("Hidden apps", hiddenLabel(Prefs.current(c).hidden.size()), null).opens();
+        mine.setValueColor(0);
+        mine.setHelp("Apps you hid for yourself. Others still see them.");
+        mine.cell.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { host.showPanel(buildHiddenList(c, host, false)); }
+        });
+        mine.cell.setOnFocusChangeListener(chain(mine.cell.getOnFocusChangeListener(),
+                new Runnable() { public void run() { mine.setValue(hiddenLabel(Prefs.current(c).hidden.size())); } }));
+
+        // ---- the TV, for the owner only
+        if (owner) {
+            p.addHeader("Everyone");
+            final Panel.Row all = p.addRow("Hidden for everyone", hiddenLabel(Prefs.hiddenCount(c)), null).opens();
+            all.setValueColor(0);
+            all.setHelp("The defaults: hidden for every profile. Only " + me.name + " can change them.");
+            all.cell.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { host.showPanel(buildHiddenList(c, host, true)); }
+            });
+            all.cell.setOnFocusChangeListener(chain(all.cell.getOnFocusChangeListener(),
+                    new Runnable() { public void run() { all.setValue(hiddenLabel(Prefs.hiddenCount(c))); } }));
+            final Panel.Row wx = p.addRow("Weather", Prefs.weatherCity(c) == null ? "Off" : Prefs.weatherCity(c), null).opens();
+            wx.setValueColor(0);
+            wx.setHelp("A forecast chip at the top of the home screen and a card on the idle "
+                    + "screen. Choose a city to switch it on.");
+            wx.cell.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { host.showPanel(CitySearchPanel.settings(c, host)); }
+            });
+            wx.cell.setOnFocusChangeListener(chain(wx.cell.getOnFocusChangeListener(), new Runnable() {
+                public void run() { wx.setValue(Prefs.weatherCity(c) == null ? "Off" : Prefs.weatherCity(c)); }
+            }));
+            final Panel.Row profiles = p.addRow("Profiles", Prefs.profiles(c).size() + "", null).opens();
+            profiles.setValueColor(0);
+            profiles.setHelp("Add, rename, recolour or remove profiles.");
+            profiles.cell.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { host.showPanel(ProfilesPanel.build(c, host)); }
+            });
+        }
+
+        // ---- the home screen, for everyone
+        p.addHeader("Home screen");
+        final Panel.Row home = p.addRow("Layout and clock", homeSummary(c), null).opens();
+        home.setValueColor(0);
+        home.setHelp("Sorting, the clock and date, Live TV first and the rows below your apps.");
+        final Panel.Row look = p.addRow("Background photo", Backgrounds.photoFile(c) == null
+                ? "none" : Backgrounds.dimLabel(c), null).opens();
+        look.setValueColor(0);
+        look.setHelp("A photo of your own behind the home screen. Choose it on the Theme page.");
         final Runnable summaries = new Runnable() {
-            public void run() {
-                home.setValue(homeSummary(c));
-                look.setValue(Backgrounds.label(c));
-            }
+            public void run() { home.setValue(homeSummary(c)); }
         };
         home.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { host.showPanel(buildHome(c, host, summaries)); }
@@ -62,7 +125,22 @@ public final class SettingsPanel {
         look.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { host.showPanel(buildLook(c, host, summaries)); }
         });
+        p.addRow("Preview the idle screen", "", new Runnable() {
+            public void run() {
+                host.closePanel();
+                host.showPanel(IdleScene.preview(c, host));
+            }
+        }).setHelp("What the TV shows after it has been left alone, in place of Fire TV's "
+                + "screensaver. Any button closes it.");
 
+        if (!owner) {
+            p.addRow("Close", "", new Runnable() {
+                public void run() { host.closePanel(); }
+            });
+            return p.root;
+        }
+
+        p.addHeader("System");
         final Panel.Row simple = p.addRow("Simple mode", onOff(Prefs.simpleMode(c)), null).asSwitch();
         simple.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -76,8 +154,17 @@ public final class SettingsPanel {
                 + "hidden (press MENU five times on the home screen to open Settings), MENU and "
                 + "long-press no longer hide tiles, and there are no update pop-ups; check for "
                 + "updates below. It does not change Debloat.");
-
-        p.addHeader("System");
+        final Panel.Row picker = p.addRow("Who's watching at power-on", onOff(Prefs.replaceAmazonPicker(c)), null).asSwitch();
+        picker.setHelp("When Fire TV shows its own \"Who's Watching Fire TV?\" after the TV is "
+                + "switched on, show Homestead's instead. Amazon apps stay on the Amazon profile "
+                + "used last; switch it in Fire TV's settings when needed.");
+        picker.cell.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                boolean n = !Prefs.replaceAmazonPicker(c);
+                Prefs.setReplaceAmazonPicker(c, n);
+                picker.setValue(onOff(n));
+            }
+        });
 
         boolean ready = SetupPanel.serviceEnabled(c);
         final Panel.Row setup = p.addRow("Setup", ready ? "done"
@@ -108,7 +195,7 @@ public final class SettingsPanel {
 
         final Panel.Row updates = p.addRow("Check for updates",
                 "v" + UpdateChecker.installedVersionName(c), null);
-        updates.setValueColor(0xFF8FA3B8);
+        updates.setValueColor(0);
         updates.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { UpdatePanel.checkNow(c, host, updates); }
         });
@@ -119,25 +206,45 @@ public final class SettingsPanel {
         return p.root;
     }
 
+    private static final int PROFILE_GLOW = 0, PROFILE_RANKS = 1, PROFILE_GREETING = 2;
+
+    /** An on/off row for one of the current profile's own settings. */
+    private static void profileSwitch(final Context c, final Host host, Panel p, String label,
+                                      final int which, String help) {
+        final Panel.Row r = p.addRow(label, onOff(profileFlag(Prefs.current(c), which)), null).asSwitch();
+        r.setHelp(help);
+        r.cell.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                Profiles.Profile me = Prefs.current(c).copy();
+                boolean n = !profileFlag(me, which);
+                if (which == PROFILE_GLOW) me.glow = n;
+                else if (which == PROFILE_RANKS) me.ranks = n;
+                else me.greeting = n;
+                Prefs.updateCurrent(c, me);
+                r.setValue(onOff(n));
+                host.rebuildGrid();
+            }
+        });
+    }
+
+    private static boolean profileFlag(Profiles.Profile p, int which) {
+        return which == PROFILE_GLOW ? p.glow : which == PROFILE_RANKS ? p.ranks : p.greeting;
+    }
+
+    static String themeLabel(Context c) {
+        Profiles.Profile me = Prefs.current(c);
+        Palette pal = Palette.resolve(me.theme, me.accent);
+        String s = me.usePhoto ? pal.name + " · Photo" : pal.name;
+        int a = Palette.indexOf(Palette.ACCENT_IDS, me.accent);
+        return a > 0 ? s + " · " + Palette.ACCENT_NAMES[a] : s;
+    }
+
+    private static String hiddenLabel(int n) { return n == 0 ? "None" : String.valueOf(n); }
+
     // ---------------------------------------------------------------- home screen
 
     private static View buildHome(final Context c, final Host host, final Runnable changed) {
-        final Panel p = new Panel(c, "Home screen", null, Panel.SHEET);
-
-        final Panel.Row hidden = p.addRow("Hidden tiles",
-                String.valueOf(Prefs.hiddenCount(c)), null).opens();
-        hidden.cell.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { host.showPanel(buildHiddenList(c, host)); }
-        });
-        // The count changes on the page this row opens; repaint it on the way back.
-        hidden.cell.setOnFocusChangeListener(chain(hidden.cell.getOnFocusChangeListener(),
-                new Runnable() {
-                    public void run() { hidden.setValue(String.valueOf(Prefs.hiddenCount(c))); }
-                }));
-
-        p.addNote("Press the MENU button on any tile to hide it (long-press works too; not "
-                + "in Simple mode). Hiding only changes what this launcher draws - nothing is "
-                + "disabled or uninstalled, and the app still works everywhere else.");
+        final Panel p = new Panel(c, "Layout and clock", null, Panel.SHEET);
 
         final Panel.Row sort = p.addRow("Sort apps by", sortLabel(c), null);
         sort.cell.setOnClickListener(new View.OnClickListener() {
@@ -147,19 +254,6 @@ public final class SettingsPanel {
                 sort.setValue(sortLabel(c));
                 AppModel.resort(c);
                 host.rebuildGrid();
-            }
-        });
-
-        final Panel.Row cols = p.addRow("Grid columns", String.valueOf(Prefs.columns(c)), null);
-        cols.cell.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                int n = Prefs.columns(c) + 1;
-                if (n > 8) n = 4;
-                Prefs.setColumns(c, n);
-                cols.setValue(String.valueOf(n));
-                AppModel.invalidateMetrics();
-                host.rebuildGrid();
-                changed.run();
             }
         });
 
@@ -174,17 +268,6 @@ public final class SettingsPanel {
             }
         });
 
-        final Panel.Row greet = p.addRow("Greeting", onOff(Prefs.greeting(c)), null).asSwitch();
-        greet.cell.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                boolean n = !Prefs.greeting(c);
-                Prefs.setGreeting(c, n);
-                greet.setValue(onOff(n));
-                host.rebuildGrid();
-            }
-        });
-        greet.setHelp("\"Good morning\", \"Good afternoon\" or \"Good evening\" at the top left.");
-
         final Panel.Row date = p.addRow("Date", dateLabel(c), null);
         date.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -195,20 +278,7 @@ public final class SettingsPanel {
                 host.rebuildGrid();
             }
         });
-        date.setHelp("Under the greeting. Both formats follow the TV's language.");
-
-        final Panel.Row wide = p.addRow("Non-TV apps as wide tiles", onOff(Prefs.nonTvWide(c)), null).asSwitch();
-        wide.cell.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                boolean n = !Prefs.nonTvWide(c);
-                Prefs.setNonTvWide(c, n);
-                wide.setValue(onOff(n));
-                AppModel.reload(c);
-                host.rebuildGrid();
-            }
-        });
-        wide.setHelp("Like Fire TV's own home: each app's icon on a banner-sized tile, in a grid "
-                + "like the TV apps.");
+        date.setHelp("Beside the clock. Both formats follow the TV's language.");
 
         final Panel.Row fire = p.addRow("Fire TV system icons", onOff(Prefs.fireOsIcons(c)), null).asSwitch();
         fire.cell.setOnClickListener(new View.OnClickListener() {
@@ -240,7 +310,7 @@ public final class SettingsPanel {
                     + "lands on Live TV.");
         }
 
-        final Panel.Row secIn = p.addRow("Show \"Inputs & System\"", onOff(Prefs.showInputs(c)), null).asSwitch();
+        final Panel.Row secIn = p.addRow("Show Inputs", onOff(Prefs.showInputs(c)), null).asSwitch();
         secIn.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 boolean n = !Prefs.showInputs(c);
@@ -250,7 +320,7 @@ public final class SettingsPanel {
             }
         });
 
-        final Panel.Row secNon = p.addRow("Show \"Non-TV Applications\"", onOff(Prefs.showNonTv(c)), null).asSwitch();
+        final Panel.Row secNon = p.addRow("Show other apps in More", onOff(Prefs.showNonTv(c)), null).asSwitch();
         secNon.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 boolean n = !Prefs.showNonTv(c);
@@ -279,7 +349,7 @@ public final class SettingsPanel {
     }
 
     private static String homeSummary(Context c) {
-        return Prefs.columns(c) + " columns";
+        return sortLabel(c) + " · " + clockLabel(c);
     }
 
     /** Runs extra work after a row's own focus handling, when it gains focus. */
@@ -296,57 +366,13 @@ public final class SettingsPanel {
     // ---------------------------------------------------------------- background
 
     private static View buildLook(final Context c, final Host host, final Runnable changed) {
-        final Panel p = new Panel(c, "Background", null, Panel.SHEET);
-
-        // One row per look, the one in use marked. Selecting one applies it at once, and the
-        // home screen beside the page shows it.
-        p.addSectionHelp("Select one to use it. The home screen beside this page changes "
-                + "straight away.");
-        final List<Panel.Row> rows = new ArrayList<Panel.Row>();
-        final List<String> ids = new ArrayList<String>();
-        final Runnable mark = new Runnable() {
-            public void run() {
-                String now = Backgrounds.currentId(c);
-                boolean noFile = Backgrounds.photoFile(c) == null;
-                for (int i = 0; i < rows.size(); i++) {
-                    boolean on = ids.get(i).equals(now);
-                    String v = on ? "in use" : "";
-                    if (noFile && ids.get(i).equals(Backgrounds.PHOTO_ID)) {
-                        v = on ? "in use, no file yet" : "no file yet";
-                    }
-                    rows.get(i).setValue(v);
-                    rows.get(i).setValueColor(on ? IN_USE : 0xFF8FA3B8);
-                }
-            }
-        };
-        for (int i = 0; i <= Backgrounds.PRESETS.length; i++) {
-            boolean photo = i == Backgrounds.PRESETS.length;
-            final Backgrounds.Preset look = photo ? Backgrounds.PHOTO_LOOK : Backgrounds.PRESETS[i];
-            final Panel.Row r = p.addRow(look.name, "", null);
-            android.graphics.Bitmap shot = photo ? Backgrounds.lastPhoto() : null;
-            r.setSwatch(shot != null
-                    ? new android.graphics.drawable.BitmapDrawable(c.getResources(), shot)
-                    : swatch(c, look));
-            r.cell.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    Backgrounds.choose(c, look.id);
-                    mark.run();
-                    host.rebuildGrid();
-                    changed.run();
-                }
-            });
-            rows.add(r);
-            ids.add(look.id);
-        }
-        rows.get(ids.indexOf("black")).setHelp("Black is for OLED screens and night viewing.");
-        rows.get(rows.size() - 1).setHelp("Choose a picture saved on the TV below (needs the "
-                + "on-device tunnel), or send a JPEG or PNG from a computer:\n\n"
+        final Panel p = new Panel(c, "Background photo", Backgrounds.photoFile(c) == null
+                ? "No photo on this TV yet" : "Use it from Settings → Theme", Panel.SHEET);
+        p.addText("Choose a picture saved on the TV below (needs the on-device tunnel), or send "
+                + "a JPEG or PNG from a computer:\n\n"
                 + "adb push background.jpg /sdcard/Download/\n"
                 + "adb shell \"content write --uri content://" + BackgroundProvider.AUTHORITY
                 + "/photo < /sdcard/Download/background.jpg\"");
-        mark.run();
-
-        p.addHeader("Photo");
         final Panel.Row dim = p.addRow("Photo dimming", Backgrounds.dimLabel(c), null);
         dim.cell.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -366,36 +392,20 @@ public final class SettingsPanel {
             public void run() { host.closePanel(); }
         });
 
-        // Start on the look in use. showPanel focuses the first row once the page is up,
-        // so this goes one step after that.
-        final View start = rows.get(Math.max(0, ids.indexOf(Backgrounds.currentId(c)))).cell;
-        p.root.post(new Runnable() {
-            public void run() {
-                p.root.post(new Runnable() { public void run() { start.requestFocus(); } });
-            }
-        });
         return p.root;
     }
 
-    private static final int IN_USE = 0xFFA7D28F;
-
-    /** A preset's colours as a small rounded sample, edged so dark ones show on the page. */
-    private static android.graphics.drawable.Drawable swatch(Context c, Backgrounds.Preset look) {
-        android.graphics.drawable.GradientDrawable d = Backgrounds.drawable(look);
-        d.setCornerRadius(AppModel.dp(c, 5));
-        d.setStroke(AppModel.dp(c, 1), 0x59FFFFFF);
-        return d;
-    }
 
     // ---------------------------------------------------------------- hidden list
 
-    private static View buildHiddenList(final Context c, final Host host) {
-        final Panel p = new Panel(c, "Hidden tiles",
+    /** everyone: the tiles hidden for every profile; else the current profile's own. */
+    private static View buildHiddenList(final Context c, final Host host, final boolean everyone) {
+        final Panel p = new Panel(c, everyone ? "Hidden for everyone" : "Hidden for " + Prefs.current(c).name,
                 "Select one to show it on the home screen again", Panel.SHEET);
 
-        Set<String> keys = Prefs.hidden(c);
+        Set<String> keys = everyone ? Prefs.hidden(c) : new java.util.HashSet<String>(Prefs.current(c).hidden);
         if (keys.isEmpty()) {
-            p.addNote("Nothing is hidden. Press MENU on a tile (or long-press it) to hide it.");
+            p.addNote("Nothing is hidden. Hold Select on an app (or press MENU) to hide it.");
         } else {
             // Resolve keys to human labels through the full model, not the visible list.
             List<AppModel.Item> all = AppModel.allItems();
@@ -425,7 +435,7 @@ public final class SettingsPanel {
                 final Panel.Row r = p.addRow(rows.get(i), "hidden", null);
                 r.cell.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View v) {
-                        Prefs.setHidden(c, key, false);
+                        unhide(c, key, everyone);
                         r.setValue("shown");
                         r.cell.setEnabled(false);
                         host.rebuildGrid();
@@ -434,7 +444,13 @@ public final class SettingsPanel {
             }
             p.addRow("Show all hidden tiles", "", new Runnable() {
                 public void run() {
-                    Prefs.clearHidden(c);
+                    if (everyone) {
+                        Prefs.clearHidden(c);
+                    } else {
+                        Profiles.Profile me = Prefs.current(c).copy();
+                        me.hidden.clear();
+                        Prefs.updateCurrent(c, me);
+                    }
                     host.rebuildGrid();
                     host.closePanel();
                 }
@@ -444,6 +460,16 @@ public final class SettingsPanel {
             public void run() { host.closePanel(); }
         });
         return p.root;
+    }
+
+    private static void unhide(Context c, String key, boolean everyone) {
+        if (everyone) {
+            Prefs.setHidden(c, key, false);
+        } else {
+            Profiles.Profile me = Prefs.current(c).copy();
+            me.hidden.remove(key);
+            Prefs.updateCurrent(c, me);
+        }
     }
 
     // ---------------------------------------------------------------- labels

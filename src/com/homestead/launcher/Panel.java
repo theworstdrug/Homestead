@@ -21,7 +21,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -46,11 +45,16 @@ public class Panel {
 
     public static final int FULL = 0, SHEET = 1;
 
-    private static final int NAVY = 0xFF0B1F38, SHEET_BG = 0xFF0E2542;
-    private static final int TEXT = 0xFFEAF0F7, SUB = 0xFFA9BACC, MUTE = 0xFF7C8FA4;
-    private static final int HEAD = 0xFF7FA8D8, ROW_BG = 0x10FFFFFF, PANE_BG = 0x12FFFFFF;
-    private static final int FOCUS_BG = 0xFFE8EEF6, FOCUS_TEXT = 0xFF0B1F38;
-    private static final int DEFAULT_VALUE = 0xFFA7D28F;
+    /** A row value with no colour of its own: drawn in the theme's secondary text colour. */
+    private static final int DEFAULT_VALUE = 0;
+    /** A page's root, which knows its sheet for the exit animation (none on full pages). */
+    static final class Root extends FrameLayout {
+        View sheet;
+        Root(Context c) { super(c); }
+    }
+
+    /** Every page paints from the current profile's palette. */
+    final Palette pal;
 
     public final FrameLayout root;
     private final Context ctx;
@@ -78,19 +82,20 @@ public class Panel {
         this.ctx = c;
         this.style = style;
         this.subtitle = subtitle;
+        this.pal = Prefs.palette(c);
 
-        root = new FrameLayout(c);
+        root = new Root(c);
         root.setFocusable(false);
         root.setClickable(true);
 
         LinearLayout list = new LinearLayout(c);
         list.setOrientation(LinearLayout.VERTICAL);
 
-        TextView t = text(title, style == SHEET ? 24 : 28, TEXT);
+        TextView t = text(title, style == SHEET ? 24 : 28, pal.text);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         list.addView(t, lp(0, dp(2)));
         if (subtitle != null) {
-            list.addView(text(subtitle, 14, SUB), lp(0, dp(14)));
+            list.addView(text(subtitle, 14, pal.sub), lp(0, dp(14)));
         } else {
             // A fixed height: a bare View asked to wrap its content takes all the space left.
             list.addView(new View(c), new LinearLayout.LayoutParams(
@@ -110,9 +115,9 @@ public class Panel {
         list.addView(sv, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        helpTitle = text("", 19, TEXT);
+        helpTitle = text("", 19, pal.text);
         helpTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        helpBody = text("", style == SHEET ? 13 : 15, SUB);
+        helpBody = text("", style == SHEET ? 13 : 15, pal.sub);
         helpBody.setLineSpacing(dp(style == SHEET ? 2 : 4), 1f);
         statusBox = new LinearLayout(c);
         statusBox.setOrientation(LinearLayout.VERTICAL);
@@ -120,15 +125,17 @@ public class Panel {
 
         if (style == SHEET) {
             // Dim the home screen, which stays visible and live to the left.
-            root.setBackgroundColor(0x80000000);
+            root.setBackgroundColor(0x66000000);
 
             LinearLayout sheet = new LinearLayout(c);
             sheet.setOrientation(LinearLayout.VERTICAL);
             sheet.setPadding(dp(28), dp(32), dp(28), dp(22));
+            // Frosted: the theme's panel colour, nearly opaque since Fire OS cannot blur what
+            // is behind it, with a hairline edge; it floats with a margin like the mockup.
             GradientDrawable bg = new GradientDrawable();
-            bg.setColor(SHEET_BG);
-            float r = dp(22);
-            bg.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
+            bg.setColor((pal.sheet & 0x00FFFFFF) | 0xEB000000);
+            bg.setCornerRadius(Px.f(c, 28));
+            bg.setStroke(Math.max(1, dp(1) / 2), pal.darkInk ? 0x1A000000 : 0x1FFFFFFF);
             sheet.setBackground(bg);
             sheet.setElevation(dp(16));
             sheet.setClipToPadding(false);
@@ -138,7 +145,7 @@ public class Panel {
             LinearLayout foot = new LinearLayout(c);
             foot.setOrientation(LinearLayout.VERTICAL);
             View rule = new View(c);
-            rule.setBackgroundColor(0x1FFFFFFF);
+            rule.setBackgroundColor(pal.darkInk ? 0x1F000000 : 0x1FFFFFFF);
             foot.addView(rule, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
             foot.addView(helpBody, lp(dp(12), 0));
@@ -153,11 +160,18 @@ public class Panel {
             int w = Math.min(dp(420), screen / 2);
             FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
                     w, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+            int m = Px.of(c, 24);
+            slp.setMargins(m, m, m, m);
             root.addView(sheet, slp);
             animated = sheet;
+            ((Root) root).sheet = sheet;
         } else {
-            // Opaque, so the grid or a panel underneath does not show through.
-            root.setBackgroundColor(NAVY);
+            // Opaque, so the grid or a panel underneath does not show through: the theme with
+            // the last app's glow, like the home screen.
+            GlowBackground g = new GlowBackground(c);
+            g.setPalette(pal);
+            g.setGlow(Prefs.current(c).glow ? Prefs.lastGlow(c) : 0, false);
+            root.setBackground(g);
 
             LinearLayout split = new LinearLayout(c);
             split.setOrientation(LinearLayout.HORIZONTAL);
@@ -169,7 +183,7 @@ public class Panel {
             pane.setOrientation(LinearLayout.VERTICAL);
             pane.setPadding(dp(28), dp(28), dp(28), dp(24));
             GradientDrawable pbg = new GradientDrawable();
-            pbg.setColor(PANE_BG);
+            pbg.setColor(pal.chip);
             pbg.setCornerRadius(dp(18));
             pane.setBackground(pbg);
             pane.addView(helpTitle, lp(0, dp(10)));
@@ -204,12 +218,12 @@ public class Panel {
     /** Sheets slide in from the right edge; full pages fade in. */
     private void enter() {
         if (style == SHEET) {
-            animated.setTranslationX(dp(420));
-            animated.animate().translationX(0f).setDuration(220)
-                    .setInterpolator(new DecelerateInterpolator(2f)).start();
+            animated.setTranslationX(dp(460));
+            animated.animate().translationX(0f).setDuration(Motion.PANEL_IN_MS)
+                    .setInterpolator(Px.IOS).start();
             root.getBackground().setAlpha(0);
             final android.animation.ValueAnimator a = android.animation.ValueAnimator.ofInt(0, 255);
-            a.setDuration(220);
+            a.setDuration(Motion.PANEL_IN_MS / 2);
             a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
                 public void onAnimationUpdate(android.animation.ValueAnimator va) {
                     root.getBackground().setAlpha((Integer) va.getAnimatedValue());
@@ -219,16 +233,51 @@ public class Panel {
         } else {
             animated.setAlpha(0f);
             animated.setTranslationX(dp(24));
-            animated.animate().alpha(1f).translationX(0f).setDuration(180)
-                    .setInterpolator(new DecelerateInterpolator(2f)).start();
+            animated.animate().alpha(1f).translationX(0f).setDuration(Motion.FOCUS_MS)
+                    .setInterpolator(Px.IOS).start();
+        }
+    }
+
+    /**
+     * Play a page's way out, then run done. A sheet slides back off to the right and the
+     * dimming fades; anything else fades. Works for any page root, including ones not built
+     * by Panel (they fade).
+     */
+    static void exit(final View root, final Runnable done) {
+        View sheet = root instanceof Root ? ((Root) root).sheet : null;
+        final android.graphics.drawable.Drawable dim = root.getBackground();
+        if (sheet != null) {
+            sheet.animate().cancel();
+            sheet.animate().translationX(sheet.getWidth() + AppModel.dp(root.getContext(), 40))
+                    .setDuration(Motion.PANEL_OUT_MS).setInterpolator(Px.IOS)
+                    .withEndAction(done).start();
+            if (dim != null) {
+                android.animation.ValueAnimator a = android.animation.ValueAnimator.ofInt(255, 0);
+                a.setDuration(Motion.PANEL_OUT_MS);
+                a.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    public void onAnimationUpdate(android.animation.ValueAnimator va) {
+                        dim.setAlpha((Integer) va.getAnimatedValue());
+                    }
+                });
+                a.start();
+            }
+        } else {
+            root.animate().cancel();
+            root.animate().alpha(0f).setDuration(Motion.PANEL_OUT_MS / 2).withEndAction(done).start();
         }
     }
 
     // ---------------------------------------------------------------- building
 
+    /** Custom content in the list, for pages that are more than rows (the Theme page). */
+    public void addView(View v, int topMargin) {
+        column.addView(v, lp(topMargin, dp(6)));
+        lastRow = null;
+    }
+
     /** A section heading inside the list. */
     public void addHeader(String text) {
-        TextView h = text(text.toUpperCase(Locale.US), 12, HEAD);
+        TextView h = text(text.toUpperCase(Locale.US), 12, pal.sub);
         h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         h.setLetterSpacing(0.12f);
         column.addView(h, lp(firstHeader ? dp(4) : dp(22), dp(8)));
@@ -253,7 +302,7 @@ public class Panel {
 
     /** A paragraph in the list itself, whatever comes before it. */
     public TextView addText(String text) {
-        TextView n = text(text, 14, SUB);
+        TextView n = text(text, 14, pal.sub);
         n.setLineSpacing(dp(3), 1f);
         column.addView(n, lp(dp(2), dp(12)));
         lastRow = null;
@@ -278,13 +327,13 @@ public class Panel {
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView l = text(label, 17, TEXT);
+        TextView l = text(label, 17, pal.text);
         l.setMaxLines(2);
         l.setEllipsize(TextUtils.TruncateAt.END);
         line.addView(l, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0f));
 
-        TextView badge = text("", 10, 0xFFE8C468);
+        TextView badge = text("", 10, pal.text);
         badge.setLetterSpacing(0.08f);
         badge.setPadding(dp(8), dp(2), dp(8), dp(2));
         badge.setVisibility(View.GONE);
@@ -295,7 +344,7 @@ public class Panel {
 
         line.addView(new View(ctx), new LinearLayout.LayoutParams(0, 1, 1f));
 
-        TextView v = text(value == null ? "" : value, 15, DEFAULT_VALUE);
+        TextView v = text(value == null ? "" : value, 15, pal.sub);
         v.setGravity(Gravity.END);
         v.setMaxLines(2);
         LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(
@@ -309,7 +358,7 @@ public class Panel {
         swlp.leftMargin = dp(14);
         line.addView(sw, swlp);
 
-        TextView chev = text("›", 22, MUTE);
+        TextView chev = text("›", 22, pal.sub);
         chev.setVisibility(View.GONE);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -350,16 +399,16 @@ public class Panel {
         LinearLayout box = new LinearLayout(ctx);
         box.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x14FFFFFF);
+        bg.setColor(pal.chip);
         bg.setCornerRadius(dp(10));
         box.setBackground(bg);
         box.setPadding(dp(14), dp(10), dp(14), dp(10));
         box.setFocusable(false);
 
-        TextView l = text(label.toUpperCase(Locale.US), 11, MUTE);
+        TextView l = text(label.toUpperCase(Locale.US), 11, pal.sub);
         l.setLetterSpacing(0.1f);
         box.addView(l, lp(0, dp(2)));
-        TextView v = text("", 15, DEFAULT_VALUE);
+        TextView v = text("", 15, pal.sub);
         box.addView(v, lp(0, 0));
 
         statusBox.addView(box, lp(statusBox.getChildCount() == 0 ? 0 : dp(8), 0));
@@ -477,7 +526,7 @@ public class Panel {
     /** A drawn on/off switch: the track takes the row's value colour. */
     private static final class Toggle extends View {
         boolean on, light;
-        int color = DEFAULT_VALUE;
+        int color = 0xFFA7D28F;
         private final android.graphics.Paint paint =
                 new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
         private final android.graphics.RectF rect = new android.graphics.RectF();
@@ -565,21 +614,28 @@ public class Panel {
         }
 
         void paint() {
+            Palette p = panel.pal;
             if (status) {
-                value.setTextColor(valueColor);
+                value.setTextColor(valueColor == DEFAULT_VALUE ? p.text
+                        : p.darkInk ? onLight(valueColor) : valueColor);
                 return;
             }
             boolean enabled = cell.isEnabled();
             GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(panel.dp(12));
-            bg.setColor(focused ? FOCUS_BG : ROW_BG);
+            bg.setCornerRadius(panel.dp(14));
+            bg.setColor(focused ? p.chipOn : (p.chip & 0x00FFFFFF) | ((p.chip >>> 25) << 24));
             cell.setBackground(bg);
 
-            label.setTextColor(focused ? FOCUS_TEXT : TEXT);
+            // What the value sits on: the focus fill, or the panel. Status colours are
+            // darkened on a light one so they stay readable.
+            boolean lightUnder = focused ? Palette.textOn(p.chipOn) == 0xFF000000 : p.darkInk;
+            label.setTextColor(focused ? p.chipOnText : p.text);
             label.setTypeface(Typeface.create(focused ? "sans-serif-medium" : "sans-serif",
                     Typeface.NORMAL));
-            int vc = focused ? onLight(valueColor) : valueColor;
+            int vc = valueColor == DEFAULT_VALUE ? (focused ? p.chipOnText : p.sub)
+                    : lightUnder ? onLight(valueColor) : valueColor;
             value.setTextColor(vc);
+            value.setAlpha(valueColor == DEFAULT_VALUE ? 0.75f : 1f);
 
             String v = value.getText().toString();
             boolean sw = isSwitch && (v.equalsIgnoreCase("on") || v.equalsIgnoreCase("off"));
@@ -587,24 +643,24 @@ public class Panel {
             toggle.setVisibility(sw ? View.VISIBLE : View.GONE);
             if (sw) {
                 toggle.on = v.equalsIgnoreCase("on");
-                toggle.light = focused;
-                toggle.color = valueColor;
+                toggle.light = lightUnder;
+                toggle.color = valueColor == DEFAULT_VALUE ? 0xFFA7D28F : valueColor;
                 toggle.invalidate();
             }
 
             if (badge.getVisibility() == View.VISIBLE) {
                 GradientDrawable b = new GradientDrawable();
                 b.setCornerRadius(panel.dp(20));
-                int bc = focused ? 0xFF7A5600 : 0xFFE8C468;
+                int bc = lightUnder ? 0xFF7A5600 : 0xFFE8C468;
                 b.setStroke(Math.max(1, panel.dp(1)), bc);
                 badge.setBackground(b);
                 badge.setTextColor(bc);
             }
-            chevron.setTextColor(focused ? FOCUS_TEXT : MUTE);
+            chevron.setTextColor(focused ? p.chipOnText : p.sub);
 
             float a = enabled ? 1f : 0.45f;
             label.setAlpha(a);
-            value.setAlpha(a);
+            value.setAlpha(a * value.getAlpha());
             toggle.setAlpha(a);
         }
     }

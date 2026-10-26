@@ -6,30 +6,32 @@ sponsored placements. Your inputs and your apps, and nothing else.
 It also replaces the Home **button**, which is the hard part — Fire OS pins Amazon's
 launcher as the system home activity and will not let anything else take it.
 
-<img src="screenshots/before_after.png" alt="Before: Amazon's home screen with a sponsored banner, rows of promoted shows and the apps in one strip. After: Homestead with HDMI inputs up front, all apps in one grid, and an Amazon Home tile.">
+<img src="screenshots/home.png" alt="Homestead 2: a greeting with the profile's name, the most-used app as a large tile with a rank number beside it, the other apps smaller and dimmed, the background glowing in the app's colour, and rows of inputs and other apps below.">
 
-Both pictures are from the same TV, a few minutes apart.
+<img src="screenshots/settings.png" width="49%" alt="Settings as a frosted panel over the home screen: Theme, Glow follows the app, Rank numbers, Greeting and Hidden apps for the current profile."> <img src="screenshots/idle.png" width="49%" alt="The idle screen: ribbons of fine light lines waving across a dark background, with the clock in the corner.">
 
 ## What it does
 
-- **A home screen without the ads.** Your inputs, your TV apps and everything else, in
-  three sections. No sponsored rows, no auto-playing trailers, no promoted tiles.
+- **A home screen without the ads**, built around the app you are on: it grows large, the
+  others step back, and the background glows in its colour. Apps are in the order you use
+  them, with Netflix-style rank numbers. Inputs and everything else sit in two quiet rows
+  below. No sponsored rows, no auto-playing trailers, no promoted tiles.
 - **The Home button comes here.** Pressing Home opens Homestead in about 170 ms instead of
-  Amazon's home screen.
-- **HDMI and Composite inputs as tiles**, so switching source is one press from home.
-- **A Live TV tile** on TVs with a built-in tuner, while Amazon's Live TV app is switched
-  on. It opens Live TV on the last channel you watched. **Live TV first** (Settings → Home
-  screen) makes it a large tile at the top, and the Home button always lands on it.
-- **Apps in the order you use them**, counted on the TV itself.
-- **Hide anything** you do not want to see: press MENU on a tile, or hold Select.
-- **Pick a background** in Settings: the blue gradient, a few darker ones, plain black for
-  OLED screens and night viewing, or [your own photo](#your-own-background-photo).
-- **Optional extras** on the Settings → Home screen page, all off until you switch them on: a
-  greeting and the date at the top, non-TV apps as wide tiles, and Fire TV's own icons for
-  Amazon Home, Settings and TV Health.
-- **Settings opens over the home screen**, so changes to the background, columns, clock and
-  sections show behind it as you make them. Larger pages explain the selected row beside
-  the list.
+  Amazon's home screen. At power-on, Homestead's "Who's watching?" replaces Fire TV's.
+- **Profiles.** Up to six, each with its own theme, accent colour, greeting and hidden
+  apps. One profile is the owner: only the owner can hide apps for everyone, change the
+  weather, manage profiles and reach the System pages.
+- **Themes**: Midnight, OLED, Frost and Ember, an accent colour, or your own photo. The
+  home screen previews each one as you move through them.
+- **Hold Select (or press Menu) on an app** to open it, hide it for yourself, or (the
+  owner) hide it for everyone.
+- **An idle screen** in place of Fire TV's screensaver: a PS3-style wave of light in your
+  theme and your last app's colour, with the clock and, if you want it, the forecast.
+- **[Weather](#weather)** from Open-Meteo, off until you choose a city.
+- **HDMI and Composite inputs** one press from home, and **Live TV** on TVs with a tuner.
+  **Live TV first** (Settings → Home screen → Layout and clock) puts it at the front.
+- **Settings opens over the home screen**, sliding in as a frosted panel, so changes show
+  behind it as you make them.
 - **TV Health** shows the state of the TV (animation speed, ad-tracking settings, the
   screensaver, which Amazon telemetry packages are running, free memory and storage). Each
   setting it flags can be fixed with one press.
@@ -74,7 +76,7 @@ installed).
 
 ## Install
 
-Download `homestead.apk` from the [latest release](https://github.com/Sarg338/Homestead/releases/latest)
+Download `homestead.apk` from the [latest release](https://github.com/theworstdrug/Homestead/releases/latest)
 and sideload it: `adb install homestead.apk` from a computer, or the Downloader app on the
 TV. When its home screen comes up, the app checks that release page (at most once a day,
 and never in [Simple mode](#setting-it-up-for-someone-else)) and shows a new version once,
@@ -140,6 +142,16 @@ from the remote. The second lets Homestead catch the Home press early, so Amazon
 screen does not flash first, and makes Home work while Amazon's home screen is showing.
 To switch packages off, open **Commands for a computer** in the app: it lists exactly the
 commands still needed on your TV.
+
+## Weather
+
+Off until you choose a city: Settings → Everyone → Weather → Choose a city, type the name
+with the on-screen keyboard, and pick it from the list. A temperature chip then sits at the
+top of the home screen (press Up to reach it; Select opens the forecast), and a small
+forecast card shows on the idle screen. Forecasts come from [Open-Meteo](https://open-meteo.com),
+which needs no account or key; only the city's coordinates are sent, at most every 30
+minutes. The same page switches between °F and °C and turns the weather off again.
+[SECURITY.md](SECURITY.md) lists exactly what is sent.
 
 ## Your own background photo
 
@@ -212,7 +224,28 @@ Things to know before you leave the TV:
   off again, the TV's key prompt could appear on screen. This has not been seen on the test
   TV (Fire OS 7) and has not been tested on Fire OS 8.
 
+## Keeping your settings
+
+Homestead's settings can be saved to a computer and put back later, for example before
+reinstalling a build signed with a different key, which Android only allows after an
+uninstall:
+
+```sh
+adb shell content read --uri content://com.homestead.launcher.migrate/prefs > homestead.prefs
+# ...uninstall, install the other build, then:
+adb push homestead.prefs /data/local/tmp/
+adb shell "content write --uri content://com.homestead.launcher.migrate/prefs < /data/local/tmp/homestead.prefs"
+```
+
+The file is plain text, one setting per line. Putting it back replaces only the settings it
+names. Only a computer connected over ADB can read or write it; other apps on the TV cannot.
+
 ## Removing Homestead
+
+Before uninstalling, if Homestead's idle screen is the screensaver, switch it back: TV
+Health → Screensaver (select it to switch to Android's basic one), or from a computer
+`adb shell settings put secure screensaver_components com.android.dreams.basic/.Colors`.
+Otherwise the TV is left pointing at a screensaver that no longer exists.
 
 1. Open **Debloat** and select **Undo everything this app switched off**. This switches
    back on exactly the packages Homestead turned off. Uninstalling the app does *not* do
@@ -271,7 +304,7 @@ says exactly what is read.
 ## Building
 
 Only needed if you want to build the app from source; to use Homestead, install the signed
-`homestead.apk` from the [releases](https://github.com/Sarg338/Homestead/releases/latest).
+`homestead.apk` from the [releases](https://github.com/theworstdrug/Homestead/releases/latest).
 No Gradle, no dependencies, under ten seconds:
 
 ```sh

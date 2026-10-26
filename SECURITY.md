@@ -9,7 +9,7 @@ are.
 | Capability | Why | Notes |
 |---|---|---|
 | Accessibility service | The only way to learn the Home button was pressed | `canRetrieveWindowContent="false"`, no key filtering, no package filter. It receives *which app came to the foreground* and nothing else. |
-| `INTERNET` | The on-device ADB client and the update check | Two uses, both listed under *What goes over the network* below. Nothing is uploaded and there are no analytics. |
+| `INTERNET` | The on-device ADB client, the update check and the weather | Three uses, all listed under *What goes over the network* below. Nothing is uploaded and there are no analytics. |
 | `WRITE_SECURE_SETTINGS` | Optional. TV Health applies animation-scale and ad-tracking settings | Declared but not held unless you grant it with `pm grant` (or the on-device tunnel grants it). Without it those pages are read-only and show the command instead. |
 | `READ_LOGS` | Optional. Lets Homestead cover Amazon's home screen before it appears, and makes Home work while Amazon's home screen is showing | Declared but not held unless you grant it with `pm grant` (setup does this over the tunnel). See *The system log* below. |
 | `SYSTEM_ALERT_WINDOW` | Fallback only | The overlay normally uses `TYPE_ACCESSIBILITY_OVERLAY`, which needs no permission. Declared for devices that refuse that window type. |
@@ -19,14 +19,21 @@ are.
 
 ## What goes over the network
 
-The app has exactly two network behaviours, and no others:
+The app has exactly three network behaviours, and no others:
 
 - **Update check.** At most once a day, when the home screen opens or comes back, and
   whenever you press *Check for updates* in Settings, one unauthenticated HTTPS GET to
-  `https://api.github.com/repos/Sarg338/Homestead/releases/latest`. It carries no token, no
+  `https://api.github.com/repos/theworstdrug/Homestead/releases/latest`. It carries no token, no
   device identifier and nothing about your TV beyond what any HTTPS request carries. The
   APK itself is downloaded only when you choose *Install now*, and it is refused unless it is
   signed by the same certificate as the installed app.
+- **Weather, only once a city is chosen** (Settings → Everyone → Weather; off by default).
+  An unauthenticated HTTPS GET to `https://api.open-meteo.com/v1/forecast` with the city's
+  latitude and longitude and the temperature unit, at most every 30 minutes while the
+  home screen or the idle screen is showing, and no more than once every 5 minutes after a
+  failure. Choosing the city sends the name you type to
+  `https://geocoding-api.open-meteo.com/v1/search`. No account, key or device identifier
+  is involved; turning the weather off stops both and deletes the stored forecast.
 - **The ADB client.** Connects only to this television's own `adbd`, directly or through
   a local tunnel on the TV. It never leaves the device. The tunnel is a VPN that routes only
   its own private subnet. Updates and re-apply after reboot do not start it while another
@@ -35,7 +42,9 @@ The app has exactly two network behaviours, and no others:
 There is no telemetry, no crash reporting and no analytics of any kind.
 
 `android:allowBackup="false"` — so `adb backup` cannot lift the app's private data, which
-includes the ADB key described below.
+includes the ADB key described below. The settings (not the key) can be exported and
+imported over ADB through a provider that refuses every caller except the shell user and
+root; see *Keeping your settings* in the README.
 
 ## The accessibility service
 

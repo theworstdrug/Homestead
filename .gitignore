@@ -18,3 +18,4 @@ res/drawable-nodpi/
 
 # patches
 *.patch
+build-tests/

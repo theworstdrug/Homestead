@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.homestead.launcher"
-    android:versionCode="73" android:versionName="1.6.9">
+    android:versionCode="75" android:versionName="2.0.0">
 
   <!-- Optional: last-used times for app sorting, when granted. -->
   <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
@@ -98,6 +98,24 @@
          and is write-only. -->
     <provider android:name=".BackgroundProvider"
               android:authorities="com.homestead.launcher.background"
+              android:exported="true"/>
+
+    <!-- The idle screen, in place of Fire OS's screensaver (screensaver_components). -->
+    <service android:name=".IdleDream"
+             android:exported="true"
+             android:label="Homestead"
+             android:permission="android.permission.BIND_DREAM_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.dreams.DreamService"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
+    </service>
+
+    <!-- Imports and exports the settings from "adb shell content read/write", so they can
+         move to an install signed with another key. Same guard as the photo provider: the
+         shell user and root only. -->
+    <provider android:name=".MigrateProvider"
+              android:authorities="com.homestead.launcher.migrate"
               android:exported="true"/>
 
     <!-- Open our launcher at boot instead of Amazon's -->

@@ -74,10 +74,13 @@ public class MainActivity extends Activity implements HomeGrid.Listener {
     private void maybeCheckForUpdate() {
         if (!Prefs.autoUpdateCheck(this) || !Prefs.onboarded(this)) return;
         if (Prefs.simpleMode(this)) return;
+        // Updates are the owner's: another profile's Skip would hide the version from them.
+        if (!Profiles.canSeeEveryone(Prefs.current(this))) return;
         if (home == null || home.isPanelOpen()) return;
         UpdateChecker.check(this, false, new UpdateChecker.Callback() {
             public void onResult(UpdateChecker.Update u, String error) {
                 if (u == null || home == null || home.isPanelOpen()) return;
+                if (!Profiles.canSeeEveryone(Prefs.current(MainActivity.this))) return;
                 if (u.versionName.equals(Prefs.skippedVersion(MainActivity.this))) return;
                 if (u.versionName.equals(Prefs.notifiedVersion(MainActivity.this))) return;
                 Prefs.setNotifiedVersion(MainActivity.this, u.versionName);

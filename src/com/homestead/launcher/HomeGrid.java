@@ -12,26 +12,22 @@
  */
 package com.homestead.launcher;
 
-import android.content.Context;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Rect;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
-import android.widget.Toast;
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.text.Layout;
-import android.text.TextUtils;
 import android.util.TypedValue;
-import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.SoundEffectConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -43,14 +39,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * The launcher UI, built against a plain Context so the same screen can be hosted by an
  * Activity or a WindowManager overlay.
  *
- * Sections (headers, scrolling card rows, a banner-tile grid) are plain focusable views in
- * a ScrollView rather than a GridView: no recycling, so each view is its item and focus
- * survives a re-sort by key. Data and bitmaps come from the process-wide AppModel.
+ * From the top: the top bar (greeting, weather, date, clock, avatar), "Your apps" (one row,
+ * the selected app large, the background glowing in its colour), Inputs and More. The
+ * D-pad is handled here rather than by the focus search, so Up and Down move between rows
+ * and return to where each row was left, and Left and Right stay in the row. Data and
+ * bitmaps come from the process-wide AppModel.
  */
 public class HomeGrid implements SettingsPanel.Host {
 
@@ -65,39 +64,42 @@ public class HomeGrid implements SettingsPanel.Host {
      */
     public interface BackHandler { boolean onBack(); }
 
-    // Layout metrics.
-    private static final int MARGIN_DP = 32;
-    private static final int GAP_DP = 16;
-    private static final int CARD_W_DP = 167;   // wide card, non-TV row
-    private static final int CARD_H_DP = 94;
-    private static final int HEADER_SP = 21;
-    private static final int HEADER_TOP_DP = 28;
-    private static final int HEADER_BOTTOM_DP = 12;
-    private static final float FOCUS_SCALE = 1.10f;
-    private static final long FOCUS_MS = 140L;
-    /** The name label under a focused banner. */
-    private static final int NAME_H_DP = 20;
-    private static final String NAME_TAG = "name";
+    static final int ROW_TOP = -1, ROW_APPS = 0, ROW_INPUTS = 1, ROW_MORE = 2;
 
     private final Context ctx;
     private final Listener listener;
 
     public final FrameLayout root;
     private final ScrollView scroll;
+    private final ObjectAnimator scrollAnim;
     private final LinearLayout column;
-    private final TextView clock;
-    /** Greeting and date at the top left; fixed, so they stay put while the grid scrolls. */
-    private final LinearLayout head;
-    private final TextView greet;
-    private final TextView date;
+    private final TopBar topBar;
+    private final AppRow appRow;
+    private final PillRow inputRow, moreRow;
+    private final TextView appsLabel, inputsLabel, moreLabel, infoName, infoMeta;
+    private final View info;
+    private final GlowBackground glowBg;
+    private final View topFade;
+
+    private List<AppModel.Item> apps = new ArrayList<AppModel.Item>();
+    private List<AppModel.Item> inputs = new ArrayList<AppModel.Item>();
+    private List<AppModel.Item> more = new ArrayList<AppModel.Item>();
+    /** Index of the first app that gets a rank number (1 when Live TV leads the row). */
+    private int firstRanked;
+    private boolean ranksShown;
 
     private final Map<String, View> cellsByKey = new HashMap<String, View>();
-    /** The horizontally scrolling section rows, in build order. */
-    private final List<HorizontalScrollView> rows = new ArrayList<HorizontalScrollView>();
-    private View focusedCell;
     private String focusedKey;
-    /** The Live TV first tile, or null when that layout is not in use. */
-    private View topTile;
+    private int focusRow = ROW_APPS;
+    /** Focus is being restored (handoff, rebuild): jump to the end state, no animation. */
+    private boolean instant;
+    private Palette palette = Palette.resolve(null, null);
+    /** Set while Settings previews a theme; the saved palette comes back with applyPalette(). */
+    private boolean previewing;
+    private int flavor = -1;
+    private String flavorFor;
+    private static final Random RANDOM = new Random();
+
     /** AppModel.order() as of the last build, to spot a re-sort done by the other grid. */
     private String builtOrder;
     /**
@@ -141,22 +143,29 @@ public class HomeGrid implements SettingsPanel.Host {
         }
     }
 
+    /** A ScrollView that leaves scrolling to us: the rows decide where the page sits. */
+    private static final class PageScroll extends ScrollView {
+        PageScroll(Context c) { super(c); }
+
+        @Override protected int computeScrollDeltaToGetChildRectOnScreen(Rect r) { return 0; }
+    }
+
     public HomeGrid(Context c, Listener l) {
         this.ctx = c;
         this.listener = l;
 
-        // Overridden so Back and Menu reach us before the focused child consumes them; a
-        // key listener on the root would never fire.
+        // Overridden so Back, Menu and the D-pad reach us before the focused child consumes
+        // them; a key listener on the root would never fire.
         root = new FrameLayout(c) {
-            @Override public boolean dispatchKeyEvent(android.view.KeyEvent e) {
-                if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
+            @Override public boolean dispatchKeyEvent(KeyEvent e) {
+                if (e.getAction() == KeyEvent.ACTION_UP) {
                     lastKey = e.getKeyCode();
                     lastKeyDevice = e.getDeviceId();
                     lastKeySource = e.getSource();
                     lastKeyAt = android.os.SystemClock.uptimeMillis();
                 }
-                if (e.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK && !panels.isEmpty()) {
-                    if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
+                if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && !panels.isEmpty()) {
+                    if (e.getAction() == KeyEvent.ACTION_UP) {
                         View top = panels.get(panels.size() - 1);
                         Object t = top.getTag();
                         if (t instanceof BackHandler && ((BackHandler) t).onBack()) return true;
@@ -167,9 +176,9 @@ public class HomeGrid implements SettingsPanel.Host {
                 // Menu hides the focused tile, matching the stock Fire TV launcher's
                 // convention (long-press also works). In Simple mode it hides nothing, and
                 // five presses in a row open Settings instead.
-                if (e.getKeyCode() == android.view.KeyEvent.KEYCODE_MENU && panels.isEmpty()) {
-                    if (e.getAction() == android.view.KeyEvent.ACTION_UP) {
-                        if (!Prefs.simpleMode(ctx)) hideFocused();
+                if (e.getKeyCode() == KeyEvent.KEYCODE_MENU && panels.isEmpty()) {
+                    if (e.getAction() == KeyEvent.ACTION_UP) {
+                        if (!Prefs.simpleMode(ctx)) openOptions();
                         else if (menuTaps.tap()) {
                             logOpen("Settings (Menu x" + MenuTaps.COUNT + ")");
                             showPanel(SettingsPanel.build(ctx, panelHost));
@@ -177,16 +186,44 @@ public class HomeGrid implements SettingsPanel.Host {
                     }
                     return true;
                 }
+                if (panels.isEmpty() && e.getAction() == KeyEvent.ACTION_DOWN && navigate(e.getKeyCode())) {
+                    return true;
+                }
+                // Hold Select: Android marks the first key repeat after the long-press timeout
+                // with FLAG_LONG_PRESS. Acting on that here works for any remote, and the
+                // release that follows must not also open the app.
+                if (isSelect(e.getKeyCode())) {
+                    if (e.getAction() == KeyEvent.ACTION_DOWN && panels.isEmpty()) {
+                        if (e.getRepeatCount() == 0) {
+                            swallowSelectUp = false;
+                            startHoldBar();
+                        } else if (e.isLongPress() && openOptions()) {
+                            swallowSelectUp = true;
+                            return true;
+                        }
+                        if (e.getRepeatCount() > 0) return true;
+                    } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                        stopHoldBar();
+                        if (swallowSelectUp) {
+                            swallowSelectUp = false;
+                            return true;
+                        }
+                    }
+                }
                 return super.dispatchKeyEvent(e);
             }
         };
         root.setClipChildren(false);
+        glowBg = new GlowBackground(c);
+        root.setBackground(glowBg);
 
-        scroll = new ScrollView(c);
+        scroll = new PageScroll(c);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         scroll.setClipToPadding(false);
         scroll.setFillViewport(true);
+        scrollAnim = ObjectAnimator.ofInt(scroll, "scrollY", 0);
+        scrollAnim.setInterpolator(Px.EASE);
         root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -194,58 +231,100 @@ public class HomeGrid implements SettingsPanel.Host {
         column.setOrientation(LinearLayout.VERTICAL);
         column.setClipChildren(false);
         column.setClipToPadding(false);
-        column.setPadding(dp(MARGIN_DP), dp(46), dp(MARGIN_DP), dp(MARGIN_DP));
+        column.setPadding(Px.of(c, 64), Px.of(c, 128), 0, Px.of(c, 420));
         scroll.addView(column, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        clock = new TextView(c);
-        clock.setTextColor(Color.WHITE);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.RIGHT);
-        clp.topMargin = dp(14);
-        clp.rightMargin = dp(33);
-        root.addView(clock, clp);
+        appsLabel = sectionLabel(R.string.home_sec_apps, 0);
+        appRow = new AppRow(c, new AppRow.Listener() {
+            public void onFocus(int i) { onCellFocused(ROW_APPS, i); }
+            public void onClick(int i) { pick(apps, i); }
+            public boolean onLongPress(int i) { return openOptions(); }
+        });
+        column.addView(appRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, AppRow.HEIGHT)));
+        LinearLayout infoBox = new LinearLayout(c);
+        infoBox.setOrientation(LinearLayout.VERTICAL);
+        infoBox.setPadding(0, Px.of(c, 18), 0, 0);
+        infoName = text(26, "sans-serif-medium");
+        infoMeta = text(17, "sans-serif");
+        infoBox.addView(infoName);
+        infoBox.addView(infoMeta);
+        info = infoBox;
+        column.addView(infoBox, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, 92)));
+        inputsLabel = sectionLabel(R.string.home_sec_inputs_short, 0);
+        inputRow = new PillRow(c, PillRow.PILLS, new AppRow.Listener() {
+            public void onFocus(int i) { onCellFocused(ROW_INPUTS, i); }
+            public void onClick(int i) { pick(inputs, i); }
+            public boolean onLongPress(int i) { return false; }
+        });
+        column.addView(inputRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, 64)));
+        moreLabel = sectionLabel(R.string.home_sec_more, 26);
+        moreRow = new PillRow(c, PillRow.TILES, new AppRow.Listener() {
+            public void onFocus(int i) { onCellFocused(ROW_MORE, i); }
+            public void onClick(int i) { pick(more, i); }
+            public boolean onLongPress(int i) { return openOptions(); }
+        });
+        column.addView(moreRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, 110)));
 
-        head = new LinearLayout(c);
-        head.setOrientation(LinearLayout.VERTICAL);
-        greet = new TextView(c);
-        greet.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
-        greet.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        head.addView(greet);
-        date = new TextView(c);
-        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        date.setAlpha(0.8f);
-        head.addView(date);
-        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.LEFT);
-        hlp.topMargin = dp(14);
-        hlp.leftMargin = dp(MARGIN_DP);
-        root.addView(head, hlp);
+        // Fades in over the top of the page once the rows scroll up, so they pass under the
+        // clock and avatar softly instead of colliding with them.
+        topFade = new View(c);
+        topFade.setAlpha(0f);
+        root.addView(topFade, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Px.of(c, 150)));
+
+        topBar = new TopBar(c, new TopBar.Listener() {
+            public void onTopFocus(View v) { onCellFocused(ROW_TOP, 0); }
+            public void onAvatar() { showPanel(ProfilePicker.build(ctx, panelHost)); }
+            public void onWeather() { showPanel(WeatherPanel.build(ctx, panelHost)); }
+        });
+        root.addView(topBar, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         AppModel.ensureLoaded(c);
         Backgrounds.ensureFolder(c);
+        IdleDream.ensureInstalled(c);
         applyBackground();
         build();
         updateClock();
     }
 
-    /** The chosen look; the overlay and the activity re-read it when they come up. */
-    private Backgrounds.Preset look;
+    private TextView text(float size, String face) {
+        TextView t = new TextView(ctx);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, Px.f(ctx, size));
+        t.setTypeface(Typeface.create(face, Typeface.NORMAL));
+        t.setSingleLine(true);
+        return t;
+    }
+
+    private TextView sectionLabel(int res, float topMargin) {
+        TextView t = text(15, "sans-serif-medium");
+        t.setText(ctx.getString(res).toUpperCase(Locale.getDefault()));
+        t.setLetterSpacing(0.1f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Px.of(ctx, topMargin);
+        lp.bottomMargin = Px.of(ctx, 14);
+        column.addView(t, lp);
+        return t;
+    }
+
     /** What is painted now, so an unchanged setting costs only a file stat. */
     private String painted;
 
     /**
-     * Read the background setting and repaint what depends on it. Cheap; no rebuild. A
-     * photo is decoded off the main thread, and this runs again once it has loaded.
+     * Re-read the current profile's look (theme, accent, photo) and repaint. Cheap; no
+     * rebuild. A photo is decoded off the main thread, and this runs again once it has loaded.
      */
     public void applyBackground() {
-        Backgrounds.Preset p = Backgrounds.current(ctx);
+        Profiles.Profile p = Prefs.current(ctx);
         Bitmap photo = null;
-        String state = p.name;
-        if (!Backgrounds.photoChosen(ctx)) {
+        String state = p.id + "|" + p.theme + "|" + p.accent;
+        if (!p.usePhoto) {
             Backgrounds.drop();
         } else {
             java.io.File f = Backgrounds.photoFile(ctx);
@@ -260,78 +339,114 @@ public class HomeGrid implements SettingsPanel.Host {
                 photo = Backgrounds.lastPhoto();
                 key = "loading";
             }
-            state = "photo|" + (photo == null ? "none" : key) + "|" + Backgrounds.dimAlpha(ctx);
+            state += "|photo|" + (photo == null ? "none" : key) + "|" + Backgrounds.dimAlpha(ctx);
         }
-        if (state.equals(painted)) return;
+        if (state.equals(painted) && !previewing) return;
         painted = state;
-        look = p;
-        root.setBackground(photo != null ? Backgrounds.photoDrawable(ctx, photo)
-                : Backgrounds.drawable(p));
-        paintText(clock);
-        paintText(greet);
-        paintText(date);
-        for (int i = 0; i < column.getChildCount(); i++) {
-            View v = column.getChildAt(i);
-            if (v instanceof TextView) paintText((TextView) v);
-        }
-        // The ring and the outline are per look, so every cell is repainted.
-        for (View cell : cellsByKey.values()) style(cell, cell == focusedCell);
+        previewing = false;
+        glowBg.setPhoto(photo, photo != null ? Backgrounds.dimAlpha(ctx) : 0);
+        paint(Palette.resolve(p.theme, p.accent));
+        topBar.setProfile(p);
     }
 
-    /** Header and clock colour; on a photo, a soft shadow keeps them readable. */
-    private void paintText(TextView t) {
-        t.setTextColor(look.text);
-        if (look == Backgrounds.PHOTO_LOOK) t.setShadowLayer(dp(4), 0, dp(1), 0xCC000000);
-        else t.setShadowLayer(0, 0, 0, 0);
+    /** Back to the saved look of the current profile, after a preview or a profile switch. */
+    public void applyPalette() {
+        painted = null;
+        applyBackground();
     }
 
-    private int dp(int v) { return AppModel.dp(ctx, v); }
+    /**
+     * Paint p everywhere without saving it, over the photo or the theme's base;
+     * applyPalette() puts the saved look back. One repaint, cheap enough for every move.
+     */
+    public void previewPalette(Palette p, boolean photo) {
+        previewing = true;
+        Bitmap b = photo ? Backgrounds.lastPhoto() : null;
+        glowBg.setPhoto(b, b != null ? Backgrounds.dimAlpha(ctx) : 0);
+        paint(p);
+    }
+
+    private void paint(Palette p) {
+        palette = p;
+        glowBg.setPalette(p);
+        if (focusRow == ROW_APPS || focusRow == ROW_TOP || !Prefs.current(ctx).glow) refreshGlow(false);
+        topBar.setPalette(p);
+        topFade.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{p.base, (p.base & 0x00FFFFFF) | 0xCC000000, p.base & 0x00FFFFFF}));
+        appRow.setPalette(p);
+        inputRow.setPalette(p);
+        moreRow.setPalette(p);
+        for (TextView t : new TextView[]{appsLabel, inputsLabel, moreLabel, infoMeta}) t.setTextColor(p.sub);
+        infoName.setTextColor(p.text);
+    }
 
     // ---------------------------------------------------------------- public API
 
     public void updateClock() {
-        updateHead();
-        int mode = Prefs.clockMode(ctx);
-        if (mode == Prefs.CLOCK_OFF) { clock.setText(""); return; }
-        String fmt = (mode == Prefs.CLOCK_12H) ? "h:mm a" : "HH:mm";
-        clock.setText(new SimpleDateFormat(fmt, Locale.getDefault()).format(new Date()));
-    }
-
-    /** Greeting and date, each its own setting; the grid moves down while either shows. */
-    private void updateHead() {
+        Profiles.Profile p = Prefs.current(ctx);
         Date now = new Date();
-        boolean g = Prefs.greeting(ctx);
+        int mode = Prefs.clockMode(ctx);
+        String clock = mode == Prefs.CLOCK_OFF ? null : new SimpleDateFormat(
+                mode == Prefs.CLOCK_12H ? "h:mm" : "HH:mm", Locale.getDefault()).format(now);
         int df = Prefs.dateFormat(ctx);
-        if (g) {
-            int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-            greet.setText(h >= 5 && h < 12 ? R.string.home_greet_morning
-                    : h >= 12 && h < 18 ? R.string.home_greet_afternoon : R.string.home_greet_evening);
-        }
-        greet.setVisibility(g ? View.VISIBLE : View.GONE);
+        String date = null;
         if (df == Prefs.DATE_LONG) {
             String pat = android.text.format.DateFormat.getBestDateTimePattern(
-                    Locale.getDefault(), "EEEEdMMMM");
-            date.setText(new SimpleDateFormat(pat, Locale.getDefault()).format(now));
+                    Locale.getDefault(), "EEEdMMM");
+            date = new SimpleDateFormat(pat, Locale.getDefault()).format(now);
         } else if (df == Prefs.DATE_SHORT) {
-            date.setText(android.text.format.DateFormat.getDateFormat(ctx).format(now));
+            date = android.text.format.DateFormat.getDateFormat(ctx).format(now);
         }
-        date.setVisibility(df != Prefs.DATE_OFF ? View.VISIBLE : View.GONE);
-        boolean show = g || df != Prefs.DATE_OFF;
-        head.setVisibility(show ? View.VISIBLE : View.GONE);
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) scroll.getLayoutParams();
-        int top = show ? dp(g && df != Prefs.DATE_OFF ? 44 : 22) : 0;
-        if (lp.topMargin != top) {
-            lp.topMargin = top;
-            scroll.setLayoutParams(lp);
+        String greeting = null;
+        if (p.greeting) {
+            int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+            int g = Flavor.greetingFor(h);
+            greeting = ctx.getString(g == Flavor.MORNING ? R.string.home_greet_morning_name
+                    : g == Flavor.AFTERNOON ? R.string.home_greet_afternoon_name
+                    : R.string.home_greet_evening_name, p.name);
+            // A new line of flavour text for each profile that comes to the screen.
+            if (flavor < 0 || !p.id.equals(flavorFor)) {
+                flavor = Flavor.pick(RANDOM, flavor);
+                flavorFor = p.id;
+            }
         }
+        topBar.setTexts(greeting, greeting == null ? null : Flavor.LINES[flavor], date, clock);
+        Weather.Forecast f = WeatherStore.get(ctx);
+        topBar.setWeather(f == null ? null : f.now.temp + "°", f == null ? null : f.now.kind);
+        WeatherStore.refreshIfStale(ctx, new Runnable() {
+            public void run() { updateClock(); }
+        });
     }
 
-    /** Focus for a fresh Home press: Live TV when it comes first, else as takeFocus(). */
+    /**
+     * Another profile is current: its look, its hidden tiles, a new greeting, and the
+     * focus back on its most-used app. The other grid catches up through syncOrder().
+     */
+    public void profileChanged() {
+        newFlavor();
+        layoutGen++;
+        applyPalette();
+        build();
+        updateClock();
+        if (panels.isEmpty()) takeStartFocus();
+    }
+
+    /** "Who's watching?" over the home screen (at power-on, in place of Amazon's). */
+    public void showProfilePicker() {
+        closePanels();
+        showPanel(ProfilePicker.build(ctx, panelHost));
+    }
+
+    /** A new flavour line next time the greeting is drawn (a fresh Home press). */
+    public void newFlavor() { flavorFor = null; }
+
+    /** Focus for a fresh Home press: Live TV when it comes first, else the most-used app. */
     public void takeStartFocus() {
-        if (liveTvFirst() && selectKey(AppModel.LIVETV_KEY)) {
-            scroll.scrollTo(0, 0);
-            return;
-        }
+        newFlavor();
+        updateClock();
+        if (liveTvFirst() && selectKey(AppModel.LIVETV_KEY)) return;
+        if (!apps.isEmpty() && selectKey(apps.get(0).key())) return;
         takeFocus();
     }
 
@@ -343,24 +458,25 @@ public class HomeGrid implements SettingsPanel.Host {
         return Prefs.liveTvFirst(ctx) && AppModel.hasLiveTv();
     }
 
-    /**
-     * The Live TV first tile has no header above it, so focusing it scrolls the page to the
-     * top. Repeated after layout, which would otherwise scroll it flush with the screen edge.
-     */
-    private void keepAtTop() {
-        scroll.scrollTo(0, 0);
-        scroll.post(new Runnable() {
-            public void run() { scroll.scrollTo(0, 0); }
-        });
-    }
-
     public void takeFocus() {
         if (focusedKey != null && selectKey(focusedKey)) return;
-        List<AppModel.Item> items = AppModel.visibleItems(ctx);
-        if (!items.isEmpty()) selectKey(items.get(0).key());
+        List<List<AppModel.Item>> rows = new ArrayList<List<AppModel.Item>>();
+        rows.add(apps);
+        rows.add(inputs);
+        rows.add(more);
+        for (List<AppModel.Item> r : rows) {
+            if (!r.isEmpty() && selectKey(r.get(0).key())) return;
+        }
     }
 
     // ------------------------------------------------------------ SettingsPanel.Host
+
+    private void setGridFocusable(boolean on) {
+        int f = on ? ViewGroup.FOCUS_BEFORE_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS;
+        scroll.setDescendantFocusability(f);
+        topBar.setDescendantFocusability(f);
+    }
+
 
     public boolean isPanelOpen() { return !panels.isEmpty(); }
 
@@ -369,31 +485,119 @@ public class HomeGrid implements SettingsPanel.Host {
      * @return true if something was hidden.
      */
     public boolean hideFocused() {
-        if (focusedKey == null) return false;
-        AppModel.Item target = null;
+        AppModel.Item it = focusedItem();
+        return it != null && hide(it, false);
+    }
+
+    /** The item with the focus, or null (top bar, nothing focused). */
+    private AppModel.Item focusedItem() {
+        if (focusedKey == null) return null;
         List<AppModel.Item> all = AppModel.allItems();
         for (int i = 0; i < all.size(); i++) {
-            if (focusedKey.equals(all.get(i).key())) { target = all.get(i); break; }
+            if (focusedKey.equals(all.get(i).key())) return all.get(i);
         }
-        if (target == null) return false;
-        // Settings and TV Health stay reachable so hidden tiles can always be restored.
-        if (target.type == AppModel.TYPE_SETTINGS || target.type == AppModel.TYPE_HEALTH) {
-            return false;
+        return null;
+    }
+
+    private static int indexOfKey(List<AppModel.Item> items, String key) {
+        for (int i = 0; i < items.size(); i++) if (items.get(i).key().equals(key)) return i;
+        return -1;
+    }
+
+    /** Settings and TV Health stay reachable so hidden tiles can always be restored. */
+    private static boolean hideable(AppModel.Item it) {
+        return it != null && it.type != AppModel.TYPE_SETTINGS && it.type != AppModel.TYPE_HEALTH;
+    }
+
+    /** Hold Select or Menu: the options card for the focused tile. Not in Simple mode. */
+    private boolean openOptions() {
+        stopHoldBar();
+        AppModel.Item it = focusedItem();
+        if (Prefs.simpleMode(ctx) || !hideable(it) || !panels.isEmpty()) return false;
+        showPanel(OptionsMenu.build(ctx, it, new OptionsMenu.Actions() {
+            public void open(AppModel.Item item) {
+                if (listener != null) listener.onPick(item);
+                act(item);
+            }
+            public void hide(AppModel.Item item, boolean everyone) { HomeGrid.this.hide(item, everyone); }
+            public void close() { closePanel(); }
+        }));
+        return true;
+    }
+
+    /**
+     * Hide a tile for this profile, or for everyone (the owner only). The focus moves to
+     * the tile before it in the same row, or the first one left.
+     */
+    private boolean hide(AppModel.Item it, boolean everyone) {
+        if (!hideable(it)) return false;
+        Profiles.Profile me = Prefs.current(ctx);
+        if (everyone && !Profiles.canSeeEveryone(me)) return false;
+        // By key: the model may have been reloaded since the menu opened, so the item can be
+        // a different object for the same tile.
+        List<AppModel.Item> row = indexOfKey(apps, it.key()) >= 0 ? apps
+                : indexOfKey(inputs, it.key()) >= 0 ? inputs : more;
+        int at = indexOfKey(row, it.key());
+        String prev = at > 0 ? row.get(at - 1).key() : (row.size() > 1 ? row.get(1).key() : null);
+        if (everyone) {
+            Prefs.setHidden(ctx, it.key(), true);
+        } else {
+            Profiles.Profile e = me.copy();
+            e.hidden.add(it.key());
+            Prefs.updateCurrent(ctx, e);
         }
-        Prefs.setHidden(ctx, target.key(), true);
-        try {
-            android.widget.Toast.makeText(ctx,
-                    target.label + " hidden - restore it in Settings",
-                    android.widget.Toast.LENGTH_SHORT).show();
-        } catch (Throwable t) { }
+        Toasts.show(ctx, root, ctx.getString(everyone ? R.string.options_hidden_all : R.string.options_hidden_for,
+                it.label, me.name));
         layoutGen++;
         rebuild();
+        if (prev != null) selectKey(prev);
         return true;
+    }
+
+    // ---- the hold bar: fills along the bottom of the tile while Select is held
+
+    /** The Select release after a hold opened the options: it must not also act. */
+    private boolean swallowSelectUp;
+    private ValueAnimator holdAnim;
+    private android.graphics.drawable.ColorDrawable holdDrawable;
+    private View holdOn;
+
+    private static boolean isSelect(int code) {
+        return code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER;
+    }
+
+    private void startHoldBar() {
+        stopHoldBar();
+        final View cell = focusedKey == null ? null : cellsByKey.get(focusedKey);
+        if (cell == null || Prefs.simpleMode(ctx) || !hideable(focusedItem())) return;
+        holdOn = cell;
+        holdDrawable = new android.graphics.drawable.ColorDrawable(palette.ring);
+        final int h = Math.max(2, Math.round(Px.f(ctx, 5) / Math.max(1f, cell.getScaleY())));
+        holdDrawable.setBounds(0, cell.getHeight() - h, 0, cell.getHeight());
+        cell.getOverlay().add(holdDrawable);
+        holdAnim = ValueAnimator.ofInt(0, cell.getWidth());
+        holdAnim.setDuration(android.view.ViewConfiguration.getLongPressTimeout());
+        holdAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            public void onAnimationUpdate(ValueAnimator a) {
+                if (holdDrawable != null) {
+                    holdDrawable.setBounds(0, cell.getHeight() - h, (Integer) a.getAnimatedValue(), cell.getHeight());
+                }
+            }
+        });
+        holdAnim.start();
+    }
+
+    private void stopHoldBar() {
+        if (holdAnim != null) holdAnim.cancel();
+        if (holdOn != null && holdDrawable != null) holdOn.getOverlay().remove(holdDrawable);
+        holdAnim = null;
+        holdDrawable = null;
+        holdOn = null;
     }
 
     public void showPanel(final View v) {
         // Stop the grid, and any panel underneath, from stealing D-pad focus.
-        scroll.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        setGridFocusable(false);
         View under = panels.isEmpty() ? null : panels.get(panels.size() - 1);
         // Taken first: blocking and hiding the page below can clear its focus.
         if (under != null) panelFocus.set(panelFocus.size() - 1, under.findFocus());
@@ -404,18 +608,40 @@ public class HomeGrid implements SettingsPanel.Host {
         if (under != null) under.setVisibility(View.INVISIBLE);
         root.addView(v, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        Px.noFocusHighlight(v);
         panels.add(v);
         panelFocus.add(null);
         v.post(new Runnable() { public void run() { v.requestFocus(); } });
     }
 
-    public void closePanel() {
+    public void closePanel() { closePanel(true); }
+
+    /** Pages still sliding out: off the stack already, removed when their exit ends. */
+    private final List<View> exiting = new ArrayList<View>();
+
+    /**
+     * Close the top page. Animated, it slides out while the page below (or the grid) is
+     * already live, so a key pressed during the exit acts at once.
+     */
+    private void closePanel(boolean animate) {
         if (panels.isEmpty()) return;
-        View top = panels.remove(panels.size() - 1);
+        final View top = panels.remove(panels.size() - 1);
         panelFocus.remove(panelFocus.size() - 1);
-        root.removeView(top);
+        if (top instanceof ViewGroup) {
+            ((ViewGroup) top).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
+        if (animate && ValueAnimatorScale.on()) {
+            exiting.add(top);
+            Panel.exit(top, new Runnable() {
+                public void run() {
+                    if (exiting.remove(top)) root.removeView(top);
+                }
+            });
+        } else {
+            root.removeView(top);
+        }
         if (panels.isEmpty()) {
-            scroll.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+            setGridFocusable(true);
             takeFocus();
         } else {
             final View below = panels.get(panels.size() - 1);
@@ -440,12 +666,24 @@ public class HomeGrid implements SettingsPanel.Host {
      * The first-run wizard stays, since losing it halfway through setup is worse.
      */
     public void closePanels() {
+        // A Home press: no exit animations, the grid is wanted clean and at once, in the
+        // saved look (a theme only being previewed must not stick).
+        if (previewing) applyPalette();
+        for (View v : exiting) root.removeView(v);
+        exiting.clear();
         while (!panels.isEmpty()) {
             if (!Prefs.onboarded(ctx)
                     && panels.get(panels.size() - 1).getTag() instanceof BackHandler) {
                 return;
             }
-            closePanel();
+            closePanel(false);
+        }
+    }
+
+    /** Whether animations run: Android's animator scale 0 means "off". */
+    private static final class ValueAnimatorScale {
+        static boolean on() {
+            return Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled();
         }
     }
 
@@ -464,7 +702,7 @@ public class HomeGrid implements SettingsPanel.Host {
         View top = from.panels.get(from.panels.size() - 1);
         // Taken first: leaving its window clears the focus.
         View focus = top.findFocus();
-        scroll.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        setGridFocusable(false);
         for (int i = 0; i < from.panels.size(); i++) {
             View v = from.panels.get(i);
             from.root.removeView(v);
@@ -475,7 +713,7 @@ public class HomeGrid implements SettingsPanel.Host {
         }
         from.panels.clear();
         from.panelFocus.clear();
-        from.scroll.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+        from.setGridFocusable(true);
         from.panelHost.grid = this;
         from.panelHost = new PanelHost(from);
         if (focus == null || !focus.requestFocus()) top.requestFocus();
@@ -489,6 +727,9 @@ public class HomeGrid implements SettingsPanel.Host {
         public void rebuildGrid() { grid.rebuildGrid(); }
         public void showPanel(View v) { grid.showPanel(v); }
         public void closePanel() { grid.closePanel(); }
+        public void profileChanged() { grid.profileChanged(); }
+        public void previewPalette(Palette p, boolean photo) { grid.previewPalette(p, photo); }
+        public void applyPalette() { grid.applyPalette(); }
     }
 
     /** A setting changed from a panel in this grid; the other grid catches up via syncOrder(). */
@@ -505,32 +746,27 @@ public class HomeGrid implements SettingsPanel.Host {
     /** Also carried across the handoff; restoring focus alone does not restore scroll. */
     public int getScrollY() { return scroll.getScrollY(); }
 
-    /** Horizontal offset of each card row. */
+    /** Where each row's selection is, carried across the handoff with the focused key. */
     public int[] getRowScrollX() {
-        int[] out = new int[rows.size()];
-        for (int i = 0; i < rows.size(); i++) out[i] = rows.get(i).getScrollX();
-        return out;
+        return new int[]{appRow.selected(), inputRow.remembered(), moreRow.remembered()};
     }
 
     /**
-     * Apply scroll offsets after layout: scrollTo() before layout is clamped to 0. The
-     * second post covers a late re-layout caused by restoring focus.
+     * Apply the vertical offset and the rows' selections after layout: scrollTo() before
+     * layout is clamped to 0. The second post covers a late re-layout caused by restoring focus.
      */
     public void applyScroll(final int y, final int[] rowX) {
-        if (y <= 0 && rowX == null) return;
-        Runnable apply = new Runnable() {
-            public void run() {
-                if (y > 0) scroll.scrollTo(0, y);
-                if (rowX != null) {
-                    for (int i = 0; i < rows.size() && i < rowX.length; i++) {
-                        if (rowX[i] > 0) rows.get(i).scrollTo(rowX[i], 0);
-                    }
-                }
-            }
+        if (rowX != null && rowX.length == 3) {
+            if (focusRow != ROW_APPS) appRow.select(rowX[0], false, false);
+            if (focusRow != ROW_INPUTS) inputRow.select(rowX[1], false, false);
+            if (focusRow != ROW_MORE) moreRow.select(rowX[2], false, false);
+        }
+        if (y <= 0) return;
+        final Runnable apply = new Runnable() {
+            public void run() { scrollAnim.cancel(); scroll.scrollTo(0, y); }
         };
-        final Runnable again = apply;
         scroll.post(new Runnable() {
-            public void run() { again.run(); scroll.post(again); }
+            public void run() { apply.run(); scroll.post(apply); }
         });
     }
 
@@ -539,7 +775,14 @@ public class HomeGrid implements SettingsPanel.Host {
         if (key == null) return false;
         View v = cellsByKey.get(key);
         if (v == null) return false;
-        v.requestFocus();
+        // Restored, not moved: land at the final size and position without animating.
+        instant = true;
+        try {
+            if (!v.requestFocus()) return false;
+            if (v.isFocused() && focusedKey != null && focusedKey.equals(key)) refocus(key);
+        } finally {
+            instant = false;
+        }
         return true;
     }
 
@@ -570,15 +813,36 @@ public class HomeGrid implements SettingsPanel.Host {
     /** Rebuild the views over the current model; nothing is re-decoded. */
     public void rebuild() {
         String keep = focusedKey;
+        int row = focusRow;
         int y = scroll.getScrollY();
         int[] rx = getRowScrollX();
         build();
-        // Leave focus alone while a panel is open, or the grid would take it from the panel.
-        if (panels.isEmpty()) {
-            if (keep == null || !selectKey(keep)) takeFocus();
+        // Leave focus alone while a panel is open, or the grid would take it from the panel;
+        // but remember where it was, so closing the panel goes back there.
+        if (!panels.isEmpty()) {
+            List<AppModel.Item> r = row == ROW_APPS ? apps : row == ROW_INPUTS ? inputs : row == ROW_MORE ? more : null;
+            if (keep != null && cellsByKey.containsKey(keep)) {
+                focusedKey = keep;
+            } else if (r != null && !r.isEmpty()) {
+                int at = row == ROW_APPS ? rx[0] : row == ROW_INPUTS ? rx[1] : rx[2];
+                focusedKey = r.get(Math.max(0, Math.min(at, r.size() - 1))).key();
+            }
+            focusRow = row;
         }
+        if (panels.isEmpty()) {
+            // A tile that went away (uninstalled, hidden) hands the focus to its neighbour.
+            if (keep == null || !selectKey(keep)) {
+                List<AppModel.Item> r = row == ROW_APPS ? apps : row == ROW_INPUTS ? inputs : row == ROW_MORE ? more : null;
+                int at = row == ROW_APPS ? rx[0] : row == ROW_INPUTS ? rx[1] : row == ROW_MORE ? rx[2] : 0;
+                if (r == null || r.isEmpty() || !selectKey(r.get(Math.max(0, Math.min(at, r.size() - 1))).key())) {
+                    takeFocus();
+                }
+            }
+        }
+        if (row == ROW_APPS) rx[0] = appRow.selected();
         applyScroll(y, rx);
     }
+
 
     // ---------------------------------------------------------------- layout
 
@@ -600,12 +864,6 @@ public class HomeGrid implements SettingsPanel.Host {
 
     /** Enough to get to Settings, using nothing that can throw. */
     private void buildFallback() {
-        column.removeAllViews();
-        cellsByKey.clear();
-        rows.clear();
-        focusedCell = null;
-        topTile = null;
-
         List<AppModel.Item> safe = new ArrayList<AppModel.Item>();
         List<AppModel.Item> all = AppModel.allItems();
         for (int i = 0; i < all.size(); i++) {
@@ -615,447 +873,251 @@ public class HomeGrid implements SettingsPanel.Host {
                 safe.add(all.get(i));
             }
         }
-        addHeader("Homestead", true);
-        if (!safe.isEmpty()) addCardRow(safe);
+        fill(new ArrayList<AppModel.Item>(), new ArrayList<AppModel.Item>(), safe, 0, false);
     }
 
     private void buildSections() {
-        column.removeAllViews();
-        cellsByKey.clear();
-        rows.clear();
-        focusedCell = null;
-
-        List<AppModel.Item> inputs = new ArrayList<AppModel.Item>();
-        List<AppModel.Item> nonTv = new ArrayList<AppModel.Item>();
         List<AppModel.Item> tv = new ArrayList<AppModel.Item>();
-
-        // Live TV first takes the Live TV tile out of its section and puts it above them all.
+        List<AppModel.Item> ins = new ArrayList<AppModel.Item>();
+        List<AppModel.Item> nonTv = new ArrayList<AppModel.Item>();
+        List<AppModel.Item> system = new ArrayList<AppModel.Item>();
         boolean tvFirst = liveTvFirst();
         AppModel.Item liveTv = null;
-        topTile = null;
 
         List<AppModel.Item> all = AppModel.visibleItems(ctx);
         for (int i = 0; i < all.size(); i++) {
             AppModel.Item it = all.get(i);
-            if (tvFirst && it.type == AppModel.TYPE_LIVETV) {
-                liveTv = it;
-            } else if (it.type == AppModel.TYPE_INPUT || it.type == AppModel.TYPE_LIVETV
-                    || it.type == AppModel.TYPE_AMAZON_HOME
+            if (it.type == AppModel.TYPE_LIVETV) {
+                if (tvFirst) liveTv = it; else ins.add(0, it);
+            } else if (it.type == AppModel.TYPE_INPUT) {
+                ins.add(it);
+            } else if (it.type == AppModel.TYPE_AMAZON_HOME
                     || it.type == AppModel.TYPE_SETTINGS || it.type == AppModel.TYPE_HEALTH) {
-                inputs.add(it);
+                system.add(it);
             } else if (it.tvApp && it.banner != null) {
                 tv.add(it);
             } else {
                 nonTv.add(it);
             }
         }
-
-        // Settings and TV Health survive the section being switched off.
-        if (!Prefs.showInputs(ctx)) {
+        // TV Health leads to Setup, Debloat and the TV's secure settings: the owner's.
+        if (!Profiles.canSeeEveryone(Prefs.current(ctx))) {
             List<AppModel.Item> keep = new ArrayList<AppModel.Item>();
-            for (int i = 0; i < inputs.size(); i++) {
-                int t = inputs.get(i).type;
-                if (t == AppModel.TYPE_SETTINGS || t == AppModel.TYPE_HEALTH) keep.add(inputs.get(i));
-            }
-            inputs = keep;
+            for (AppModel.Item it : system) if (it.type != AppModel.TYPE_HEALTH) keep.add(it);
+            system = keep;
         }
+        if (!Prefs.showInputs(ctx)) ins.clear();
         if (!Prefs.showNonTv(ctx)) nonTv.clear();
-
-        // Simple mode drops them too, unless nothing else is left: an empty grid has
-        // nothing to focus, so the Menu presses that open Settings may not reach us.
+        // Simple mode drops Settings and TV Health, unless nothing else is left: an empty
+        // screen has nothing to focus, so the Menu presses that open Settings may not reach us.
         if (Prefs.simpleMode(ctx)) {
             List<AppModel.Item> rest = new ArrayList<AppModel.Item>();
-            for (int i = 0; i < inputs.size(); i++) {
-                int t = inputs.get(i).type;
-                if (t != AppModel.TYPE_SETTINGS && t != AppModel.TYPE_HEALTH) rest.add(inputs.get(i));
+            for (AppModel.Item it : system) {
+                if (it.type != AppModel.TYPE_SETTINGS && it.type != AppModel.TYPE_HEALTH) rest.add(it);
             }
-            if (!rest.isEmpty() || !nonTv.isEmpty() || !tv.isEmpty() || liveTv != null) {
-                inputs = rest;
+            if (!rest.isEmpty() || !nonTv.isEmpty() || !tv.isEmpty() || !ins.isEmpty() || liveTv != null) {
+                system = rest;
             }
         }
-
-        String inputsTitle = ctx.getString(R.string.home_sec_inputs);
-        String nonTvTitle = ctx.getString(R.string.home_sec_nontv);
-        String tvTitle = ctx.getString(R.string.home_sec_tv);
-        boolean first = true;
-        if (tvFirst) {
-            if (liveTv != null)    { addLiveTvTile(liveTv); first = false; }
-            if (!tv.isEmpty())     { addHeader(tvTitle, first); first = false; addTileGrid(tv); }
-            if (!inputs.isEmpty()) { addHeader(inputsTitle, first); first = false; addCardRow(inputs); }
-            if (!nonTv.isEmpty())  { addHeader(nonTvTitle, first); addNonTv(nonTv); }
-            return;
-        }
-        if (!inputs.isEmpty()) { addHeader(inputsTitle, first); first = false; addCardRow(inputs); }
-        if (!nonTv.isEmpty())  { addHeader(nonTvTitle, first); first = false; addNonTv(nonTv); }
-        if (!tv.isEmpty())     { addHeader(tvTitle, first); addTileGrid(tv); }
+        List<AppModel.Item> appList = new ArrayList<AppModel.Item>();
+        if (liveTv != null) appList.add(liveTv);
+        appList.addAll(tv);
+        List<AppModel.Item> moreList = new ArrayList<AppModel.Item>(nonTv);
+        moreList.addAll(system);
+        boolean ranks = Prefs.current(ctx).ranks && Prefs.sort(ctx) == Prefs.SORT_LAST_USED;
+        fill(appList, ins, moreList, liveTv != null ? 1 : 0, ranks);
     }
 
-    /** Live TV first: one large tile, two banner cells wide, on its own row. */
-    private void addLiveTvTile(AppModel.Item it) {
-        FrameLayout cell = newCell(it);
-        topTile = cell;
-        // Alone on its row, so Left or Right would otherwise jump to a tile in another row.
-        stopAt(cell, true, true);
-        GradientDrawable card = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[] { 0xFF168494, 0xFF0A3642 });
-        card.setCornerRadius(dp(8));
-        cell.setBackground(card);
-
-        LinearLayout text = new LinearLayout(ctx);
-        text.setOrientation(LinearLayout.VERTICAL);
-        text.setGravity(Gravity.CENTER_VERTICAL);
-        text.setPadding(dp(24), dp(12), dp(24), dp(12));
-
-        TextView title = new TextView(ctx);
-        title.setText(it.label);
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        text.addView(title);
-
-        TextView hint = new TextView(ctx);
-        hint.setText(ctx.getString(R.string.home_livetv_hint));
-        hint.setTextColor(0xCCFFFFFF);
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        text.addView(hint);
-
-        // The same line icon as the Live TV card, large, left of the text.
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(24), 0, 0, 0);
-        if (it.glyph != 0) {
-            ImageView ic = new ImageView(ctx);
-            ic.setImageResource(it.glyph);
-            ic.setColorFilter(0xFFBFE9EE, android.graphics.PorterDuff.Mode.SRC_IN);
-            row.addView(ic, new LinearLayout.LayoutParams(dp(56), dp(56)));
-        }
-        row.addView(text, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        cell.addView(row, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        int w = AppModel.cellW(ctx) * 2 + dp(GAP_DP);
-        int h = AppModel.cellH(ctx) * 3 / 2;
-        column.addView(cell, new LinearLayout.LayoutParams(w, h));
+    private void fill(List<AppModel.Item> a, List<AppModel.Item> in, List<AppModel.Item> m,
+                      int ranked, boolean ranks) {
+        apps = a;
+        inputs = in;
+        more = m;
+        firstRanked = ranked;
+        ranksShown = ranks;
+        cellsByKey.clear();
+        focusedKey = null;
+        appRow.setItems(a, ranks, ranked, palette);
+        inputRow.setItems(in, palette);
+        moreRow.setItems(m, palette);
+        for (int i = 0; i < a.size(); i++) cellsByKey.put(a.get(i).key(), appRow.tile(i));
+        for (int i = 0; i < in.size(); i++) cellsByKey.put(in.get(i).key(), inputRow.cell(i));
+        for (int i = 0; i < m.size(); i++) cellsByKey.put(m.get(i).key(), moreRow.cell(i));
+        int vis = a.isEmpty() ? View.GONE : View.VISIBLE;
+        appsLabel.setVisibility(vis);
+        appRow.setVisibility(vis);
+        info.setVisibility(vis);
+        inputsLabel.setVisibility(in.isEmpty() ? View.GONE : View.VISIBLE);
+        inputRow.setVisibility(in.isEmpty() ? View.GONE : View.VISIBLE);
+        moreLabel.setVisibility(m.isEmpty() ? View.GONE : View.VISIBLE);
+        moreRow.setVisibility(m.isEmpty() ? View.GONE : View.VISIBLE);
+        appRow.select(0, false, false);
+        updateInfo(0);
+        Px.noFocusHighlight(root);
     }
 
-    private void addHeader(String text, boolean first) {
-        TextView h = new TextView(ctx);
-        h.setText(text);
-        paintText(h);
-        h.setTextSize(TypedValue.COMPLEX_UNIT_SP, HEADER_SP);
-        h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = first ? 0 : dp(HEADER_TOP_DP);
-        lp.bottomMargin = dp(HEADER_BOTTOM_DP);
-        column.addView(h, lp);
-    }
+    // ---------------------------------------------------------------- focus
 
-    /** Cards, or banner tiles made from the icons when "Wide tiles" is on (AppModel builds them). */
-    private void addNonTv(List<AppModel.Item> items) {
-        // Until the model reloads after the switch, the tiles are not built yet.
-        if (Prefs.nonTvWide(ctx) && items.get(0).banner != null) addTileGrid(items);
-        else addCardRow(items);
-    }
-
-    /**
-     * A scrolling row of cards. HorizontalScrollView moves the focus for Left and Right itself
-     * and reports the key handled, so the system's navigation click, which every other D-pad
-     * move makes, never plays; the row plays it when the focus actually moved.
-     */
-    private static final class CardRow extends HorizontalScrollView {
-        CardRow(Context c) { super(c); }
-
-        @Override public boolean arrowScroll(int direction) {
-            View before = findFocus();
-            boolean handled = super.arrowScroll(direction);
-            View after = findFocus();
-            if (handled && after != null && after != before && after != this) {
-                playSoundEffect(android.view.SoundEffectConstants
-                        .getContantForFocusDirection(direction));
-            }
-            return handled;
-        }
-    }
-
-    /** Wide cards in a horizontally scrolling row. */
-    private void addCardRow(List<AppModel.Item> items) {
-        HorizontalScrollView hs = new CardRow(ctx);
-        rows.add(hs);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setClipChildren(false);
-        hs.setClipToPadding(false);
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setClipChildren(false);
-        for (int i = 0; i < items.size(); i++) {
-            View cell = buildCard(items.get(i));
-            LinearLayout.LayoutParams lp =
-                    new LinearLayout.LayoutParams(dp(CARD_W_DP), dp(CARD_H_DP));
-            if (i > 0) lp.leftMargin = dp(GAP_DP);
-            stopAt(cell, i == 0, i == items.size() - 1);
-            row.addView(cell, lp);
-        }
-        hs.addView(row, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        column.addView(hs, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-    }
-
-    /** 6-column grid of banner tiles, built as plain rows. */
-    private void addTileGrid(List<AppModel.Item> items) {
-        int w = AppModel.cellW(ctx);
-        int h = AppModel.cellH(ctx);
-        LinearLayout row = null;
-        for (int i = 0; i < items.size(); i++) {
-            if (i % AppModel.columns(ctx) == 0) {
-                row = new LinearLayout(ctx);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setClipChildren(false);
-                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                if (i > 0) rlp.topMargin = dp(GAP_DP);
-                column.addView(row, rlp);
-            }
-            View cell = buildTile(items.get(i));
-            boolean rowEnd = i % AppModel.columns(ctx) == AppModel.columns(ctx) - 1
-                    || i == items.size() - 1;
-            stopAt(cell, i % AppModel.columns(ctx) == 0, rowEnd);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
-            if (i % AppModel.columns(ctx) != 0) lp.leftMargin = dp(GAP_DP);
-            row.addView(cell, lp);
-        }
-    }
-
-    // ---------------------------------------------------------------- cells
-
-    private FrameLayout newCell(final AppModel.Item it) {
-        final FrameLayout cell = new FrameLayout(ctx);
-        cell.setFocusable(true);
-        cell.setFocusableInTouchMode(true);
-        cell.setClipChildren(false);
-        cell.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            public void onFocusChange(View v, boolean has) {
-                if (has) {
-                    focusedCell = v;
-                    focusedKey = it.key();
-                    style(v, true, true);
-                    if (v == topTile) keepAtTop();
-                } else {
-                    style(v, false, true);
-                }
-            }
-        });
-        cell.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                // Settings and TV Health open a panel in this window, so they are not
-                // reported as a pick; that would make an overlay host dismiss itself.
-                boolean leaves = it.type != AppModel.TYPE_SETTINGS
-                        && it.type != AppModel.TYPE_HEALTH;
-                if (listener != null && leaves) listener.onPick(it);
-                act(it);
-            }
-        });
-        cell.setOnLongClickListener(new View.OnLongClickListener() {
-            // In Simple mode a held Select falls through to a normal click.
-            public boolean onLongClick(View v) {
-                return !Prefs.simpleMode(ctx) && hideFocused();
-            }
-        });
-        cellsByKey.put(it.key(), cell);
-        style(cell, false);
-        return cell;
-    }
-
-    /** The preset's edge around an unfocused cell, or null when the preset has none. */
-    private Drawable outline() {
-        if (look == null || look.outline == 0) return null;
-        GradientDrawable d = new GradientDrawable();
-        d.setCornerRadius(dp(8));
-        d.setStroke(dp(1), look.outline);
-        d.setColor(Color.TRANSPARENT);
-        return d;
-    }
-
-    /**
-     * Focus treatment: 1.1x scale and a ring in the preset's colour (dark on the light
-     * default, since white is invisible on white banners; light on the dark presets). Set
-     * directly rather than via a selector so it survives the window losing focus during
-     * the overlay -> activity handoff.
-     */
-    private void style(View v, boolean focused) { style(v, focused, false); }
-
-    /**
-     * @param animate grow or shrink over FOCUS_MS; only for a D-pad move, so a focus
-     *        restored during the handoff appears at its final size.
-     */
-    private void style(View v, boolean focused, boolean animate) {
-        if (!(v instanceof FrameLayout)) return;
-        FrameLayout f = (FrameLayout) v;
-        float scale = focused ? FOCUS_SCALE : 1f;
-        if (focused) {
-            GradientDrawable ring = new GradientDrawable();
-            ring.setCornerRadius(dp(8));
-            ring.setStroke(dp(3), look.ring);
-            ring.setColor(Color.TRANSPARENT);
-            f.setForeground(ring);
-            f.setTranslationZ(dp(8));
+    /** A cell in row took the focus, by the D-pad (animated) or restored (instant). */
+    private void onCellFocused(int row, int index) {
+        boolean animate = !instant;
+        int was = focusRow;
+        focusRow = row;
+        if (row == ROW_TOP) {
+            focusedKey = null;
         } else {
-            f.setForeground(outline());
-            f.setTranslationZ(0f);
+            List<AppModel.Item> items = row == ROW_APPS ? apps : row == ROW_INPUTS ? inputs : more;
+            if (index >= items.size()) return;
+            focusedKey = items.get(index).key();
         }
-        f.animate().cancel();
+        if (row == ROW_APPS) {
+            appRow.select(index, true, animate);
+            updateInfo(index);
+        } else if (was == ROW_APPS || appRow.size() > 0) {
+            appRow.select(appRow.selected(), false, animate);
+        }
+        if (row == ROW_INPUTS) inputRow.select(index, true, animate);
+        else if (was == ROW_INPUTS) inputRow.select(inputRow.remembered(), false, animate);
+        if (row == ROW_MORE) moreRow.select(index, true, animate);
+        else if (was == ROW_MORE) moreRow.select(moreRow.remembered(), false, animate);
+        info.animate().alpha(row == ROW_APPS || row == ROW_TOP ? 1f : 0.35f).setDuration(Motion.FOCUS_MS).start();
+        // Only when the rows move up into its space: with no apps row there is nothing to hide for.
+        boolean below = (row == ROW_INPUTS || row == ROW_MORE) && rowScroll(row) > 0;
+        topBar.setHeadHidden(below, animate);
+        topFade.animate().cancel();
+        if (animate) topFade.animate().alpha(below ? 1f : 0f).setDuration(Motion.ROWS_MS).start();
+        else topFade.setAlpha(below ? 1f : 0f);
+        refreshGlow(animate);
+        scrollToRow(row, animate);
+    }
+
+    /** The focused view already had focus (a restore): bring the visuals to it anyway. */
+    private void refocus(String key) {
+        for (int i = 0; i < apps.size(); i++) if (apps.get(i).key().equals(key)) { onCellFocused(ROW_APPS, i); return; }
+        for (int i = 0; i < inputs.size(); i++) if (inputs.get(i).key().equals(key)) { onCellFocused(ROW_INPUTS, i); return; }
+        for (int i = 0; i < more.size(); i++) if (more.get(i).key().equals(key)) { onCellFocused(ROW_MORE, i); return; }
+    }
+
+    /** The glow takes the selected app's colour; the theme's own when that is switched off. */
+    private void refreshGlow(boolean animate) {
+        int color = 0;
+        if (Prefs.current(ctx).glow && !apps.isEmpty()) {
+            AppModel.Item it = apps.get(Math.min(appRow.selected(), apps.size() - 1));
+            color = it.type == AppModel.TYPE_LIVETV ? 0xFF168494 : it.glow;
+            if (color != 0) Prefs.setLastGlow(ctx, color);
+        }
+        glowBg.setGlow(color, animate);
+    }
+
+    private void updateInfo(int index) {
+        if (index >= apps.size()) return;
+        AppModel.Item it = apps.get(index);
+        infoName.setText(it.label);
+        String hold = ctx.getString(R.string.home_hold_hint);
+        if (it.type == AppModel.TYPE_LIVETV) {
+            infoMeta.setText(ctx.getString(R.string.home_livetv_hint));
+        } else if (ranksShown) {
+            int rank = index - firstRanked + 1;
+            infoMeta.setText((rank == 1 ? ctx.getString(R.string.home_rank_first)
+                    : ctx.getString(R.string.home_rank_n, rank)) + "  ·  " + hold);
+        } else {
+            infoMeta.setText(hold);
+        }
+    }
+
+    /** How far the page scrolls for a row: the greeting's space is reused below the apps. */
+    private int rowScroll(int row) {
+        int y = 0;
+        if (row == ROW_INPUTS && inputsLabel.getVisibility() == View.VISIBLE) {
+            y = inputsLabel.getTop() - Px.of(ctx, 261);
+        } else if (row == ROW_MORE && moreLabel.getVisibility() == View.VISIBLE) {
+            y = moreLabel.getTop() - Px.of(ctx, 288);
+        }
+        return Math.max(0, y);
+    }
+
+    private void scrollToRow(int row, boolean animate) {
+        int y = rowScroll(row);
+        scrollAnim.cancel();
         if (animate) {
-            f.animate().scaleX(scale).scaleY(scale).setDuration(FOCUS_MS).start();
+            scrollAnim.setIntValues(scroll.getScrollY(), y);
+            scrollAnim.setDuration(Motion.ROWS_MS);
+            scrollAnim.start();
         } else {
-            f.setScaleX(scale);
-            f.setScaleY(scale);
-        }
-        View name = f.findViewWithTag(NAME_TAG);
-        if (name != null) {
-            name.setVisibility(focused ? View.VISIBLE : View.INVISIBLE);
-            // The label hangs over the next grid row, which is drawn later; lift this row
-            // above it. Left up while focus stays in the row, whatever order the calls come.
-            View row = (View) f.getParent();
-            if (row != null && (focused || focusedCell == null || focusedCell.getParent() != row)) {
-                row.setTranslationZ(focused ? dp(8) : 0f);
-            }
-            // Scroll far enough to show the label too, not only the banner.
-            if (focused && animate) {
-                final FrameLayout cell = f;
-                cell.post(new Runnable() {
-                    public void run() {
-                        cell.requestRectangleOnScreen(new android.graphics.Rect(0, 0,
-                                cell.getWidth(), cell.getHeight() + dp(NAME_H_DP + 8)));
-                    }
-                });
-            }
+            scroll.scrollTo(0, y);
         }
     }
 
-    /**
-     * Keep focus on the first or last cell of a row when the D-pad points past it. Otherwise
-     * the focus search picks the nearest cell that way anywhere on the page, often in another
-     * row (a scrolled card row has cards off the left edge), which reads as a jump.
-     */
-    private static void stopAt(View cell, final boolean first, final boolean last) {
-        if (!first && !last) return;
-        cell.setOnKeyListener(new View.OnKeyListener() {
-            public boolean onKey(View v, int code, android.view.KeyEvent e) {
-                return (first && code == android.view.KeyEvent.KEYCODE_DPAD_LEFT)
-                        || (last && code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT);
-            }
-        });
+    // ---------------------------------------------------------------- the D-pad
+
+    /** Rows that have something in them, top to bottom. */
+    private int[] liveRows() {
+        List<Integer> out = new ArrayList<Integer>();
+        out.add(ROW_TOP);
+        if (!apps.isEmpty()) out.add(ROW_APPS);
+        if (!inputs.isEmpty()) out.add(ROW_INPUTS);
+        if (!more.isEmpty()) out.add(ROW_MORE);
+        int[] r = new int[out.size()];
+        for (int i = 0; i < r.length; i++) r[i] = out.get(i);
+        return r;
     }
 
-    /** A TV app: full-bleed banner, already rounded in the bitmap. */
-    private View buildTile(AppModel.Item it) {
-        FrameLayout cell = newCell(it);
-        ImageView img = new ImageView(ctx);
-        img.setScaleType(ImageView.ScaleType.FIT_XY);
-        img.setImageBitmap(it.banner);
-        cell.addView(img, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // The app's name, shown while focused. It hangs below the banner into the gap and
-        // over the row beneath (the focused cell draws on top), so rows keep their height.
-        TextView name = new TextView(ctx);
-        name.setTag(NAME_TAG);
-        name.setText(it.label);
-        name.setTextColor(Color.WHITE);
-        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        name.setSingleLine(true);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        name.setGravity(Gravity.CENTER);
-        name.setPadding(dp(8), 0, dp(8), 0);
-        GradientDrawable pill = new GradientDrawable();
-        pill.setCornerRadius(dp(10));
-        pill.setColor(0xD9101820);
-        name.setBackground(pill);
-        name.setVisibility(View.INVISIBLE);
-        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(NAME_H_DP),
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        name.setTranslationY(dp(NAME_H_DP + 4));
-        cell.addView(name, nlp);
-        return cell;
-    }
-
-    /** An input, Amazon Home, or a non-TV app: icon + label on a card. */
-    private View buildCard(AppModel.Item it) {
-        FrameLayout cell = newCell(it);
-        GradientDrawable card = new GradientDrawable();
-        card.setCornerRadius(dp(8));
-        boolean textTile = it.type == AppModel.TYPE_INPUT || it.type == AppModel.TYPE_LIVETV;
-        // Live TV first: inputs go a quiet grey so only the Live TV tile stands out, and
-        // app labels get larger and brighter.
-        boolean tvFirst = liveTvFirst();
-        if (textTile) card.setColor(tvFirst ? 0xFF2A333D : 0xFF0E5A63);
-        else card.setColor(0xFF033058);
-        cell.setBackground(card);
-
-        if (textTile) {
-            LinearLayout col = new LinearLayout(ctx);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setGravity(Gravity.CENTER);
-            if (it.glyph != 0) {
-                ImageView ic = new ImageView(ctx);
-                ic.setImageResource(it.glyph);
-                ic.setColorFilter(tvFirst ? 0xFFB4BECA : 0xFFBFE9EE,
-                        android.graphics.PorterDuff.Mode.SRC_IN);
-                LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(28), dp(28));
-                ilp.bottomMargin = dp(6);
-                col.addView(ic, ilp);
+    /** @return true if the key was a D-pad move this screen handled. */
+    private boolean navigate(int key) {
+        int dx = key == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : key == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
+        int dy = key == KeyEvent.KEYCODE_DPAD_UP ? -1 : key == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
+        if (dx == 0 && dy == 0) return false;
+        View now = root.findFocus();
+        if (now == null) { takeFocus(); return true; }
+        if (dx != 0) {
+            View next = null;
+            if (focusRow == ROW_TOP) {
+                List<View> top = topBar.focusables();
+                int i = top.indexOf(now);
+                next = i < 0 ? null : (i + dx >= 0 && i + dx < top.size() ? top.get(i + dx) : null);
+            } else if (focusRow == ROW_APPS) {
+                next = appRow.tile(appRow.selected() + dx);
+            } else if (focusRow == ROW_INPUTS) {
+                next = inputRow.cell(inputRow.selected() + dx);
+            } else {
+                next = moreRow.cell(moreRow.selected() + dx);
             }
-            TextView tv = new TextView(ctx);
-            tv.setText(it.label);
-            tv.setTextColor(Color.WHITE);
-            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            tv.setGravity(Gravity.CENTER);
-            tv.setSingleLine(true);
-            tv.setEllipsize(TextUtils.TruncateAt.END);
-            col.addView(tv);
-            if (it.connected) {
-                TextView tag = new TextView(ctx);
-                tag.setText(R.string.home_connected);
-                tag.setTextColor(0xFF7BD88F);
-                tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-                tag.setGravity(Gravity.CENTER);
-                col.addView(tag);
+            if (next != null && next.requestFocus()) {
+                root.playSoundEffect(dx < 0 ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
             }
-            cell.addView(col, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            return cell;
+            return true;
         }
+        int[] rows = liveRows();
+        int at = 0;
+        for (int i = 0; i < rows.length; i++) if (rows[i] == focusRow) at = i;
+        int to = at + dy;
+        if (to < 0 || to >= rows.length) return true;
+        View next;
+        int row = rows[to];
+        if (row == ROW_TOP) {
+            List<View> top = topBar.focusables();
+            next = top.get(top.size() - 1);
+        } else if (row == ROW_APPS) {
+            next = appRow.tile(appRow.selected());
+        } else if (row == ROW_INPUTS) {
+            next = inputRow.cell(inputRow.remembered());
+        } else {
+            next = moreRow.cell(moreRow.remembered());
+        }
+        if (next != null && next.requestFocus()) {
+            root.playSoundEffect(dy < 0 ? SoundEffectConstants.NAVIGATION_UP : SoundEffectConstants.NAVIGATION_DOWN);
+        }
+        return true;
+    }
 
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(8), dp(6), dp(8), dp(6));
-
-        ImageView ic = new ImageView(ctx);
-        ic.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        if (it.icon != null) ic.setImageBitmap(it.icon);
-        int isz = dp(CARD_H_DP) * 62 / 100;
-        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(isz, isz);
-        ilp.rightMargin = dp(9);
-        row.addView(ic, ilp);
-
-        TextView tv = new TextView(ctx);
-        tv.setText(it.label);
-        tv.setTextColor(tvFirst ? 0xFFD5DDE5 : 0xFFA2AFBB);
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, tvFirst ? 14 : 12);
-        tv.setMaxLines(2);
-        tv.setEllipsize(TextUtils.TruncateAt.END);
-        tv.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
-        tv.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        row.addView(tv, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        cell.addView(row, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        return cell;
+    private void pick(List<AppModel.Item> items, int index) {
+        if (index >= items.size()) return;
+        AppModel.Item it = items.get(index);
+        // Settings and TV Health open a panel in this window, so they are not reported as a
+        // pick; that would make an overlay host dismiss itself.
+        boolean leaves = it.type != AppModel.TYPE_SETTINGS && it.type != AppModel.TYPE_HEALTH;
+        if (listener != null && leaves) listener.onPick(it);
+        act(it);
     }
 
     // ---------------------------------------------------------------- launching
@@ -1081,6 +1143,7 @@ public class HomeGrid implements SettingsPanel.Host {
             return;
         }
         if (it.type == AppModel.TYPE_HEALTH) {
+            if (!Profiles.canSeeEveryone(Prefs.current(ctx))) return;
             logOpen(it.label);
             showPanel(HealthPanel.build(ctx, panelHost));
             return;
@@ -1093,7 +1156,7 @@ public class HomeGrid implements SettingsPanel.Host {
                 if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
                 else ctx.startService(i);
             } catch (Throwable t) {
-                Toast.makeText(ctx, R.string.home_livetv_failed, Toast.LENGTH_SHORT).show();
+                Toasts.show(ctx, root, ctx.getString(R.string.home_livetv_failed));
             }
             return;
         }

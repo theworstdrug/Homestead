@@ -27,7 +27,7 @@ public final class UpdatePanel {
     private static final int OK = 0xFFA7D28F;
     private static final int AMBER = 0xFFE8C468;
     private static final int BAD = 0xFFE89A8A;
-    private static final int MUTE = 0xFF8FA3B8;
+    private static final int MUTE = 0; // the theme's value colour
 
     private UpdatePanel() { }
 
